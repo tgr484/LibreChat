@@ -1,30 +1,11 @@
-import React, { useMemo } from 'react';
-import { useRecoilValue } from 'recoil';
+import { useState, useMemo } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { OGDialog, OGDialogTemplate } from '@librechat/client';
-import {
-  ImageUpIcon,
-  FileSearch,
-  FileType2Icon,
-  FileImageIcon,
-  TerminalSquareIcon,
-} from 'lucide-react';
-import {
-  Providers,
-  inferMimeType,
-  EToolResources,
-  EModelEndpoint,
-  isBedrockDocumentType,
-  defaultAgentCapabilities,
-  isDocumentSupportedProvider,
-} from 'librechat-data-provider';
-import {
-  useAgentToolPermissions,
-  useAgentCapabilities,
-  useGetAgentsConfig,
-  useLocalize,
-} from '~/hooks';
-import { ephemeralAgentByConvoId } from '~/store';
+import { EToolResources } from 'librechat-data-provider';
+import { useAttachFileOptions } from '~/hooks';
 import { useDragDropContext } from '~/Providers';
+import useLocalize from '~/hooks/useLocalize';
+import { cn } from '~/utils';
 
 interface DragDropModalProps {
   onOptionSelect: (option: EToolResources | undefined) => void;
@@ -33,123 +14,25 @@ interface DragDropModalProps {
   setShowModal: (showModal: boolean) => void;
 }
 
-interface FileOption {
-  label: string;
-  value?: EToolResources;
-  icon: React.JSX.Element;
-  condition?: boolean;
-}
-
 const DragDropModal = ({ onOptionSelect, setShowModal, files, isVisible }: DragDropModalProps) => {
   const localize = useLocalize();
-  const { agentsConfig } = useGetAgentsConfig();
-  /** TODO: Ephemeral Agent Capabilities
-   * Allow defining agent capabilities on a per-endpoint basis
-   * Use definition for agents endpoint for ephemeral agents
-   * */
-  const capabilities = useAgentCapabilities(agentsConfig?.capabilities ?? defaultAgentCapabilities);
-  const { conversationId, agentId, endpoint, endpointType, useResponsesApi } = useDragDropContext();
-  const ephemeralAgent = useRecoilValue(ephemeralAgentByConvoId(conversationId ?? ''));
-  const { fileSearchAllowedByAgent, codeAllowedByAgent, provider } = useAgentToolPermissions(
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const { conversationId, agentId, endpoint, endpointType, useResponsesApi } =
+    useDragDropContext();
+
+  const { resolveDefault, overrideOptions, showEscapeHatch } = useAttachFileOptions({
     agentId,
-    ephemeralAgent,
-  );
-
-  const options = useMemo(() => {
-    const _options: FileOption[] = [];
-    let currentProvider = provider || endpoint;
-
-    // This will be removed in a future PR to formally normalize Providers comparisons to be case insensitive
-    if (currentProvider?.toLowerCase() === Providers.OPENROUTER) {
-      currentProvider = Providers.OPENROUTER;
-    }
-
-    /** Helper to get inferred MIME type for a file */
-    const getFileType = (file: File) => inferMimeType(file.name, file.type);
-
-    const isAzureWithResponsesApi =
-      (currentProvider === EModelEndpoint.azureOpenAI ||
-        endpointType === EModelEndpoint.azureOpenAI) &&
-      useResponsesApi === true;
-
-    // Check if provider supports document upload
-    if (
-      isDocumentSupportedProvider(endpointType) ||
-      isDocumentSupportedProvider(currentProvider) ||
-      isAzureWithResponsesApi
-    ) {
-      const supportsImageDocVideoAudio =
-        currentProvider === EModelEndpoint.google || currentProvider === Providers.OPENROUTER;
-      const isBedrock =
-        currentProvider === Providers.BEDROCK || endpointType === EModelEndpoint.bedrock;
-
-      const isValidProviderFile = (file: File): boolean => {
-        const type = getFileType(file);
-        if (supportsImageDocVideoAudio) {
-          return (
-            type?.startsWith('image/') ||
-            type?.startsWith('video/') ||
-            type?.startsWith('audio/') ||
-            type === 'application/pdf'
-          );
-        }
-        if (isBedrock) {
-          return type?.startsWith('image/') || isBedrockDocumentType(type);
-        }
-        return type?.startsWith('image/') || type === 'application/pdf';
-      };
-
-      const validFileTypes = files.every(isValidProviderFile);
-
-      _options.push({
-        label: localize('com_ui_upload_provider'),
-        value: undefined,
-        icon: <FileImageIcon className="icon-md" />,
-        condition: validFileTypes,
-      });
-    } else {
-      // Only show image upload option if all files are images and provider doesn't support documents
-      _options.push({
-        label: localize('com_ui_upload_image_input'),
-        value: undefined,
-        icon: <ImageUpIcon className="icon-md" />,
-        condition: files.every((file) => getFileType(file)?.startsWith('image/')),
-      });
-    }
-    if (capabilities.fileSearchEnabled && fileSearchAllowedByAgent) {
-      _options.push({
-        label: localize('com_ui_upload_file_search'),
-        value: EToolResources.file_search,
-        icon: <FileSearch className="icon-md" />,
-      });
-    }
-    if (capabilities.codeEnabled && codeAllowedByAgent) {
-      _options.push({
-        label: localize('com_ui_upload_code_environment'),
-        value: EToolResources.execute_code,
-        icon: <TerminalSquareIcon className="icon-md" />,
-      });
-    }
-    if (capabilities.contextEnabled) {
-      _options.push({
-        label: localize('com_ui_upload_ocr_text'),
-        value: EToolResources.context,
-        icon: <FileType2Icon className="icon-md" />,
-      });
-    }
-
-    return _options;
-  }, [
-    files,
-    localize,
-    provider,
     endpoint,
     endpointType,
-    capabilities,
+    conversationId,
     useResponsesApi,
-    codeAllowedByAgent,
-    fileSearchAllowedByAgent,
-  ]);
+    includeSharePoint: false,
+  });
+
+  const recommendedToolResource = useMemo(() => resolveDefault(files), [resolveDefault, files]);
+  const recommendedKey = recommendedToolResource === EToolResources.context ? 'context' : 'provider';
+  const recommendedOption = overrideOptions.find((option) => option.key === recommendedKey);
+  const otherOptions = overrideOptions.filter((option) => option.key !== recommendedKey);
 
   if (!isVisible) {
     return null;
@@ -162,18 +45,45 @@ const DragDropModal = ({ onOptionSelect, setShowModal, files, isVisible }: DragD
         className="w-11/12 sm:w-[440px] md:w-[400px] lg:w-[360px]"
         main={
           <div className="flex flex-col gap-2">
-            {options.map(
-              (option, index) =>
-                option.condition !== false && (
-                  <button
-                    key={index}
-                    onClick={() => onOptionSelect(option.value)}
-                    className="flex items-center gap-2 rounded-lg p-2 hover:bg-surface-active-alt"
-                  >
-                    {option.icon}
-                    <span>{option.label}</span>
-                  </button>
-                ),
+            {recommendedOption && (
+              <button
+                onClick={() => onOptionSelect(recommendedToolResource)}
+                className="flex items-center gap-2 rounded-lg border border-border-light bg-surface-active-alt p-2 hover:bg-surface-hover"
+              >
+                {recommendedOption.icon}
+                <span>{recommendedOption.label}</span>
+                <span className="ml-auto text-xs text-text-secondary">
+                  {localize('com_ui_recommended')}
+                </span>
+              </button>
+            )}
+            {showEscapeHatch && otherOptions.length > 0 && (
+              <>
+                <button
+                  onClick={() => setShowMoreOptions((prev) => !prev)}
+                  className="flex items-center gap-1 self-start p-1 text-sm text-text-secondary hover:text-text-primary"
+                >
+                  {localize('com_ui_more_options')}
+                  <ChevronDown
+                    className={cn(
+                      'icon-sm transition-transform duration-200',
+                      showMoreOptions && 'rotate-180',
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+                {showMoreOptions &&
+                  otherOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      onClick={() => onOptionSelect(option.toolResource)}
+                      className="flex items-center gap-2 rounded-lg p-2 hover:bg-surface-active-alt"
+                    >
+                      {option.icon}
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+              </>
             )}
           </div>
         }

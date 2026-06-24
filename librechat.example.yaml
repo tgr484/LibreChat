@@ -169,6 +169,10 @@ interface:
   marketplace:
     use: false
   fileCitations: true
+  # Show/hide the "more upload options" menu (Force Provider/Text, File Search,
+  # Code Environment, SharePoint) next to the chat attach button. When false, only
+  # the automatic smart-default upload is available. (default: true)
+  fileAttachOptions: true
   # Tools pinned to the prompt bar by default for all users.
   # Only seeds the initial state — once a user pins/unpins a tool, their choice is kept.
   # Valid tool keys: artifacts, execute_code, web_search, file_search, skills.
