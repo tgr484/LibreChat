@@ -16,14 +16,14 @@ function makeFile(name: string, type: string): File {
 }
 
 describe('isFileValidForProvider', () => {
-  it('allows images for a provider with no native document support', () => {
+  it('allows images for a document-supported provider', () => {
     const file = makeFile('photo.png', 'image/png');
     expect(isFileValidForProvider(file, { currentProvider: EModelEndpoint.openAI })).toBe(true);
   });
 
-  it('rejects non-images for a provider with no native document support', () => {
+  it('allows pdf for a document-supported provider (openAI)', () => {
     const file = makeFile('doc.pdf', 'application/pdf');
-    expect(isFileValidForProvider(file, { currentProvider: EModelEndpoint.openAI })).toBe(false);
+    expect(isFileValidForProvider(file, { currentProvider: EModelEndpoint.openAI })).toBe(true);
   });
 
   it('allows pdf for a document-supported provider (anthropic)', () => {
