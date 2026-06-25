@@ -835,6 +835,10 @@ export const endpointSchema = baseEndpointSchema.merge(
     apiKey: z.string(),
     baseURL: z.string(),
     models: z.object({
+      /** Static model list; also used as a fallback if `fetch` fails or returns
+       * nothing. When `fetch` succeeds, only `default[0]` is kept — moved to the
+       * front of the fetched list as the model selected for users with no prior
+       * selection (e.g. on first login). */
       default: z.array(modelItemSchema).min(1),
       fetch: z.boolean().optional(),
       userIdQuery: z.boolean().optional(),

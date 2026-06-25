@@ -1,5 +1,15 @@
-import { EModelEndpoint, EToolResources, Providers } from 'librechat-data-provider';
-import { getDefaultToolResource, isFileValidForProvider } from '../attachFileDefaults';
+import {
+  EModelEndpoint,
+  EToolResources,
+  Providers,
+  imageMimeTypes,
+  applicationMimeTypes,
+} from 'librechat-data-provider';
+import {
+  getDefaultToolResource,
+  isFileValidForProvider,
+  getAcceptFromSupportedMimeTypes,
+} from '../attachFileDefaults';
 
 function makeFile(name: string, type: string): File {
   return new File([new ArrayBuffer(8)], name, { type });
@@ -97,5 +107,27 @@ describe('getDefaultToolResource', () => {
       contextEnabled: true,
     });
     expect(result).toBe(EToolResources.context);
+  });
+});
+
+describe('getAcceptFromSupportedMimeTypes', () => {
+  it('returns no restriction when no config is given', () => {
+    expect(getAcceptFromSupportedMimeTypes(undefined)).toBe('');
+    expect(getAcceptFromSupportedMimeTypes([])).toBe('');
+  });
+
+  it('limits the accept filter to the configured MIME categories', () => {
+    const accept = getAcceptFromSupportedMimeTypes([imageMimeTypes]);
+    expect(accept).toContain('image/png');
+    expect(accept).toContain('image/jpeg');
+    expect(accept).not.toContain('application/pdf');
+    expect(accept).not.toContain('video/mp4');
+  });
+
+  it('combines multiple configured categories', () => {
+    const accept = getAcceptFromSupportedMimeTypes([imageMimeTypes, applicationMimeTypes]);
+    expect(accept).toContain('image/png');
+    expect(accept).toContain('application/pdf');
+    expect(accept).not.toContain('video/mp4');
   });
 });

@@ -6,7 +6,7 @@ import type { EndpointFileConfig, TConversation } from 'librechat-data-provider'
 import type { SharePointFile } from '~/data-provider/Files/sharepoint';
 import type { AttachFileOption } from '~/hooks/Files/useAttachFileOptions';
 import type { ExtendedFile, FileSetter } from '~/common';
-import { getAcceptForFileType } from '~/utils/attachFileDefaults';
+import { getAcceptForFileType, getAcceptFromSupportedMimeTypes } from '~/utils/attachFileDefaults';
 import {
   useAttachFileOptions,
   useFileHandlingNoChatContext,
@@ -85,9 +85,14 @@ const AttachFileMenu = ({
         return;
       }
       inputRef.current.value = '';
-      inputRef.current.accept = isPermissiveMimeConfig(endpointFileConfig?.supportedMimeTypes)
-        ? ''
-        : getAcceptForFileType(fileType);
+      const supportedMimeTypes = endpointFileConfig?.supportedMimeTypes;
+      if (isPermissiveMimeConfig(supportedMimeTypes)) {
+        inputRef.current.accept = '';
+      } else if (fileType !== undefined) {
+        inputRef.current.accept = getAcceptForFileType(fileType);
+      } else {
+        inputRef.current.accept = getAcceptFromSupportedMimeTypes(supportedMimeTypes);
+      }
       inputRef.current.click();
     },
     [endpointFileConfig?.supportedMimeTypes],

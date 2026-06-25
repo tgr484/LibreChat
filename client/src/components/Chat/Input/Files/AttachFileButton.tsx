@@ -88,7 +88,9 @@ const AttachFileButton = ({
         className="overflow-visible"
         isOpen={isPopoverActive}
         setIsOpen={setIsPopoverActive}
-        modal={true}
+        // Non-modal: a modal menu focus-traps and swallows the first click on the
+        // adjacent paperclip button, so it takes two clicks to fire the primary upload.
+        modal={false}
         unmountOnHide={true}
         trigger={chevronTrigger}
         items={overrideItems}

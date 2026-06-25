@@ -33,6 +33,26 @@ function headersFingerprint(headers: Record<string, string> | undefined): string
   return crypto.createHash('sha256').update(JSON.stringify(ordered)).digest('hex').slice(0, 16);
 }
 
+/**
+ * Moves the endpoint's first configured `models.default` entry to the front of a successful
+ * fetch result, so it becomes the model a user with no prior selection lands on. Without this,
+ * `models.default` order is discarded entirely once a fetch succeeds, leaving model selection on
+ * first login to whatever order the provider's `/models` endpoint happens to return.
+ */
+function prioritizeDefaultModel(models: string[], defaultModel?: string): string[] {
+  if (!defaultModel) {
+    return models;
+  }
+  const index = models.indexOf(defaultModel);
+  if (index <= 0) {
+    return models;
+  }
+  const reordered = [...models];
+  reordered.splice(index, 1);
+  reordered.unshift(defaultModel);
+  return reordered;
+}
+
 interface ResolvedEndpoint {
   name: string;
   endpoint: TEndpoint;
@@ -275,7 +295,9 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
         const defaults = (endpoint.models?.default ?? []).map((m) =>
           typeof m === 'string' ? m : m.name,
         );
-        modelsConfig[name] = !modelData?.length ? defaults : modelData;
+        modelsConfig[name] = !modelData?.length
+          ? defaults
+          : prioritizeDefaultModel(modelData, defaults[0]);
       }
 
       /** A shared fetch caches token config under one endpoint's tokenKey;

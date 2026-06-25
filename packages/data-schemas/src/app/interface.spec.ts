@@ -208,4 +208,28 @@ describe('loadDefaultInterface', () => {
 
     expect(interfaceConfig).not.toHaveProperty('defaultPinnedTools');
   });
+
+  it('preserves a disabled fileAttachOptions flag', async () => {
+    const config: Partial<TCustomConfig> = {
+      interface: {
+        fileAttachOptions: false,
+      },
+    };
+
+    const interfaceConfig = await loadDefaultInterface({
+      config,
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig?.fileAttachOptions).toBe(false);
+  });
+
+  it('omits fileAttachOptions when not explicitly configured', async () => {
+    const interfaceConfig = await loadDefaultInterface({
+      config: {},
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig).not.toHaveProperty('fileAttachOptions');
+  });
 });

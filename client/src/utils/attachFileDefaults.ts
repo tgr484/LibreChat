@@ -3,6 +3,7 @@ import {
   EToolResources,
   EModelEndpoint,
   inferMimeType,
+  fullMimeTypesList,
   isBedrockDocumentType,
   bedrockDocumentExtensions,
   isDocumentSupportedProvider,
@@ -140,4 +141,20 @@ export const getAcceptForFileType = (fileType?: AttachFileUploadType): string =>
     default:
       return '';
   }
+};
+
+/**
+ * OS file-picker `accept` filter for the smart-default upload, derived from the endpoint's
+ * configured `supportedMimeTypes` patterns (`librechat.yaml` `fileConfig`). Patterns are regexes
+ * and `accept` only understands literal extensions/MIME types, so each pattern is matched against
+ * LibreChat's known MIME type list to build the concrete filter; an explicitly permissive config
+ * (e.g. `.*`) is handled separately by the caller via `isPermissiveMimeConfig`.
+ */
+export const getAcceptFromSupportedMimeTypes = (supportedMimeTypes?: RegExp[]): string => {
+  if (!supportedMimeTypes || supportedMimeTypes.length === 0) {
+    return '';
+  }
+  return fullMimeTypesList
+    .filter((mimeType) => supportedMimeTypes.some((regex) => regex.test(mimeType)))
+    .join(',');
 };
