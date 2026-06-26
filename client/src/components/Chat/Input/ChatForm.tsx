@@ -103,6 +103,7 @@ const ChatForm = memo(function ChatForm({
   } = useAddedChatContext();
   const assistantMap = useAssistantsMapContext();
   const { data: startupConfig } = useGetStartupConfig();
+  const audioRecorderEnabled = startupConfig?.interface?.audioRecorder === true;
 
   const endpoint = useMemo(
     () => conversation?.endpointType ?? conversation?.endpoint,
@@ -392,7 +393,7 @@ const ChatForm = memo(function ChatForm({
               />
               <div className="mx-auto flex" />
               <TokenUsage index={index} conversation={conversation} isSubmitting={isSubmitting} />
-              {SpeechToText && (
+              {SpeechToText && audioRecorderEnabled && (
                 <AudioRecorder
                   methods={methods}
                   ask={submitMessage}
