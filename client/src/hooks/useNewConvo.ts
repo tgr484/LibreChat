@@ -205,6 +205,7 @@ const useNewConvo = (index = 0) => {
             endpoint: defaultEndpoint,
             models,
             defaultParamsEndpoint,
+            defaultLastSelectedModel: startupConfig?.interface?.defaultLastSelectedModel,
           });
 
           if (hasExplicitChatProjectId) {

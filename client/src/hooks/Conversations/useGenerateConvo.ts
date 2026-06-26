@@ -18,7 +18,7 @@ import type { AssistantListItem } from '~/common';
 import type { SetterOrUpdater } from 'recoil';
 import useAssistantListMap from '~/hooks/Assistants/useAssistantListMap';
 import { buildDefaultConvo, getDefaultEndpoint, logger } from '~/utils';
-import { useGetEndpointsQuery } from '~/data-provider';
+import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { mainTextareaId } from '~/common';
 import store from '~/store';
 
@@ -34,6 +34,7 @@ const useGenerateConvo = ({
   const modelsQuery = useGetModelsQuery();
   const assistantsListMap = useAssistantListMap();
   const { data: endpointsConfig = {} as TEndpointsConfig } = useGetEndpointsQuery();
+  const { data: startupConfig } = useGetStartupConfig();
 
   const timeoutIdRef = useRef<NodeJS.Timeout>();
   const rootConvo = useRecoilValue(store.conversationByKeySelector(rootIndex));
@@ -129,6 +130,7 @@ const useGenerateConvo = ({
         endpoint: defaultEndpoint ?? ('' as EModelEndpoint),
         models,
         defaultParamsEndpoint,
+        defaultLastSelectedModel: startupConfig?.interface?.defaultLastSelectedModel,
       });
 
       if (preset?.title != null && preset.title !== '') {

@@ -1,24 +1,5 @@
 import { LocalStorageKeys, TConversation, isUUID } from 'librechat-data-provider';
 
-/** One-time seeding: if the user has never chosen a model, write the deployment default.
- * `defaultModel` comes from `interface.defaultLastSelectedModel` in librechat.yaml. */
-export function initDefaultLastSelectedModel(defaultModel: Record<string, string> | undefined) {
-  if (!defaultModel || Object.keys(defaultModel).length === 0) {
-    return;
-  }
-  const raw = localStorage.getItem(LocalStorageKeys.LAST_MODEL);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, string> | null;
-      if (parsed && Object.keys(parsed).length > 0) {
-        return;
-      }
-    } catch {
-      // malformed — overwrite below
-    }
-  }
-  localStorage.setItem(LocalStorageKeys.LAST_MODEL, JSON.stringify(defaultModel));
-}
 
 export function getLocalStorageItems() {
   const items = {

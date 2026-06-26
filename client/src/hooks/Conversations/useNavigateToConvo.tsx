@@ -114,6 +114,7 @@ const useNavigateToConvo = (index = 0) => {
         endpoint: defaultEndpoint,
         lastConversationSetup: conversation,
         defaultParamsEndpoint,
+        defaultLastSelectedModel: startupConfig?.interface?.defaultLastSelectedModel,
       });
     }
     clearAllConversations(true);
