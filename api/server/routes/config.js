@@ -259,7 +259,18 @@ router.get('/', async function (req, res) {
       ...buildPostLoginPayload(),
       sharedLinksSnapshotFilesEnabled: sharedLinksEnabled && isFileSnapshotEnabled(appConfig),
       socialLogins: appConfig?.registration?.socialLogins ?? defaultSocialLogins,
-      interface: appConfig?.interfaceConfig,
+      interface: (() => {
+        const iface = appConfig?.interfaceConfig ?? {};
+        const raw = appConfig?.config?.interface ?? {};
+        return {
+          ...iface,
+          ...(raw.toolsDropdown != null ? { toolsDropdown: raw.toolsDropdown } : {}),
+          ...(raw.audioRecorder != null ? { audioRecorder: raw.audioRecorder } : {}),
+          ...(raw.defaultLastSelectedModel != null
+            ? { defaultLastSelectedModel: raw.defaultLastSelectedModel }
+            : {}),
+        };
+      })(),
       titleGenerationTiming: resolveTitleTiming({
         appConfig,
         endpoint: EModelEndpoint.agents,
