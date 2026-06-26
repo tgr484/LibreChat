@@ -100,6 +100,13 @@ export const isFileValidForProvider = (
  * native/provider upload if every file is natively supported by the active provider,
  * otherwise OCR/text-extraction (`context`) if that capability is enabled, otherwise
  * fall back to native and let existing validation/backend errors surface unsupported types.
+ *
+ * Custom endpoints are a special case: `EModelEndpoint.custom` is in `documentSupportedProviders`
+ * because many OpenAI-compatible custom configs do support native PDFs. However we cannot know
+ * at this point whether the specific underlying model actually does. When OCR is available
+ * (`contextEnabled`) and the user is on a custom endpoint, prefer OCR for non-image files so
+ * that configured OCR strategies (e.g. an ocr-shim server) are used by default. The escape-hatch
+ * override menu still allows forcing native upload when the underlying model truly supports it.
  */
 export const getDefaultToolResource = ({
   files,
@@ -113,6 +120,15 @@ export const getDefaultToolResource = ({
   contextEnabled: boolean;
 }): EToolResources | undefined => {
   const currentProvider = normalizeProvider(provider || endpoint);
+
+  if (endpointType === EModelEndpoint.custom && contextEnabled) {
+    const allImages = files.every((file) => {
+      const type = inferMimeType(file.name, file.type);
+      return type?.startsWith('image/') ?? false;
+    });
+    return allImages ? undefined : EToolResources.context;
+  }
+
   const allNativelyValid = files.every((file) =>
     isFileValidForProvider(file, { currentProvider, endpointType, useResponsesApi }),
   );

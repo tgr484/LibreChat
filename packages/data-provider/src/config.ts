@@ -1229,6 +1229,8 @@ export const interfaceSchema = z
     fileAttachOptions: z.boolean().optional(),
     /** Tool keys (and `'mcp'` or an MCP server name) pinned to the prompt bar by default */
     defaultPinnedTools: z.array(z.string()).optional(),
+    /** Default model per endpoint, seeded into localStorage on first visit (when the user has no prior selection). */
+    defaultLastSelectedModel: z.record(z.string(), z.string()).optional(),
     buildInfo: z.boolean().optional(),
     remoteAgents: z
       .object({

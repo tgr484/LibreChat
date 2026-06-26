@@ -182,6 +182,11 @@ interface:
   #   - 'artifacts'
   #   - 'execute_code'
   #   - 'mcp'
+  # Default model per endpoint, seeded into localStorage on the user's first visit.
+  # Only applies when the user has never selected a model (empty lastSelectedModel).
+  # Keys are endpoint names, values are model names.
+  # defaultLastSelectedModel:
+  #   RNT: 'qwen-3.6-thinking'
   # Remote Agents configuration
   # Controls user permissions for remote agents with external API support
   # remoteAgents:
