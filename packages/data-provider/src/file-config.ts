@@ -613,15 +613,9 @@ export function getEndpointFileConfig(params: {
         endpoint,
       );
     }
-    /** 4. Fallback to 'agents' (all custom endpoints are non-assistants) */
-    if (mergedFileConfig.endpoints[EModelEndpoint.agents]) {
-      return mergeWithDefault(
-        mergedFileConfig.endpoints[EModelEndpoint.agents],
-        defaultConfig,
-        endpoint,
-      );
-    }
-    /** 5. Fallback to default */
+    /** 4. Fallback to default — do NOT fall through to 'agents' here: the static agents config
+     * always carries the full supportedMimeTypes list, which would silently override any
+     * restrictive `endpoints.default.supportedMimeTypes` the admin configured. */
     return defaultConfig;
   }
 

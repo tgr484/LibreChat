@@ -232,4 +232,58 @@ describe('loadDefaultInterface', () => {
 
     expect(interfaceConfig).not.toHaveProperty('fileAttachOptions');
   });
+
+  it('preserves toolsDropdown flag', async () => {
+    const config: Partial<TCustomConfig> = {
+      interface: {
+        toolsDropdown: false,
+      },
+    };
+
+    const interfaceConfig = await loadDefaultInterface({
+      config,
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig?.toolsDropdown).toBe(false);
+  });
+
+  it('preserves audioRecorder flag', async () => {
+    const config: Partial<TCustomConfig> = {
+      interface: {
+        audioRecorder: true,
+      },
+    };
+
+    const interfaceConfig = await loadDefaultInterface({
+      config,
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig?.audioRecorder).toBe(true);
+  });
+
+  it('preserves defaultLastSelectedModel map', async () => {
+    const config: Partial<TCustomConfig> = {
+      interface: {
+        defaultLastSelectedModel: { RNT: 'qwen-3.6-thinking' },
+      },
+    };
+
+    const interfaceConfig = await loadDefaultInterface({
+      config,
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig?.defaultLastSelectedModel).toEqual({ RNT: 'qwen-3.6-thinking' });
+  });
+
+  it('omits defaultLastSelectedModel when not configured', async () => {
+    const interfaceConfig = await loadDefaultInterface({
+      config: {},
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig).not.toHaveProperty('defaultLastSelectedModel');
+  });
 });
