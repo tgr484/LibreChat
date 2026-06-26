@@ -150,7 +150,7 @@ const useGenerateConvo = ({
       }, 150);
       return conversation;
     },
-    [assistantsListMap, endpointsConfig, index, modelsQuery.data, rootConvo, setConversation],
+    [assistantsListMap, endpointsConfig, index, modelsQuery.data, rootConvo, setConversation, startupConfig],
   );
 
   return { generateConversation };

@@ -279,6 +279,7 @@ const useNewConvo = (index = 0) => {
       modelsQuery.data,
       hasAgentAccess,
       searchParams,
+      startupConfig,
     ],
   );
 

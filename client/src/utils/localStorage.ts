@@ -1,6 +1,5 @@
 import { LocalStorageKeys, TConversation, isUUID } from 'librechat-data-provider';
 
-
 export function getLocalStorageItems() {
   const items = {
     lastSelectedModel: localStorage.getItem(LocalStorageKeys.LAST_MODEL) ?? '',
