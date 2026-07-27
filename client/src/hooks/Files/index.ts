@@ -10,3 +10,4 @@ export { default as useSharePointPicker } from './useSharePointPicker';
 export { default as useSharePointDownload } from './useSharePointDownload';
 export { default as useSharePointFileHandling } from './useSharePointFileHandling';
 export { default as useSharePointToken } from './useSharePointToken';
+export { default as useAttachFileOptions } from './useAttachFileOptions';

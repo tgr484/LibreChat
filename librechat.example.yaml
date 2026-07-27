@@ -169,6 +169,16 @@ interface:
   marketplace:
     use: false
   fileCitations: true
+  # Show/hide the "more upload options" menu (Force Provider/Text, File Search,
+  # Code Environment, SharePoint) next to the chat attach button. When false, only
+  # the automatic smart-default upload is available. (default: true)
+  fileAttachOptions: true
+  # Show/hide the Tools dropdown button (gear icon) in the chat toolbar.
+  # When false, the button is hidden entirely. (default: true)
+  toolsDropdown: true
+  # Show/hide the audio recorder (speech-to-text) button in the chat toolbar.
+  # When false, the button is hidden regardless of user speech settings. (default: false)
+  # audioRecorder: false
   # Tools pinned to the prompt bar by default for all users.
   # Only seeds the initial state — once a user pins/unpins a tool, their choice is kept.
   # Valid tool keys: artifacts, execute_code, web_search, file_search, skills.
@@ -178,6 +188,11 @@ interface:
   #   - 'artifacts'
   #   - 'execute_code'
   #   - 'mcp'
+  # Default model per endpoint, seeded into localStorage on the user's first visit.
+  # Only applies when the user has never selected a model (empty lastSelectedModel).
+  # Keys are endpoint names, values are model names.
+  # defaultLastSelectedModel:
+  #   RNT: 'qwen-3.6-thinking'
   # Remote Agents configuration
   # Controls user permissions for remote agents with external API support
   # remoteAgents:

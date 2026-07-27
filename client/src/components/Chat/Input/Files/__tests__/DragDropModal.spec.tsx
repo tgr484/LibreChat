@@ -1,202 +1,147 @@
-import {
-  EModelEndpoint,
-  isDocumentSupportedProvider,
-  inferMimeType,
-} from 'librechat-data-provider';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { EToolResources } from 'librechat-data-provider';
+import DragDropModal from '../DragDropModal';
 
-describe('DragDropModal - Provider Detection', () => {
-  describe('endpointType priority over currentProvider', () => {
-    it('should show upload option for LiteLLM with OpenAI endpointType', () => {
-      const currentProvider = 'litellm'; // NOT in documentSupportedProviders
-      const endpointType = EModelEndpoint.openAI; // IS in documentSupportedProviders
+jest.mock('@librechat/client', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    OGDialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+      open ? React.createElement('div', null, children) : null,
+    OGDialogTemplate: ({ title, main }: { title: React.ReactNode; main: React.ReactNode }) =>
+      React.createElement('div', null, title, main),
+  };
+});
 
-      // With fix: endpointType checked
-      const withFix =
-        isDocumentSupportedProvider(endpointType) || isDocumentSupportedProvider(currentProvider);
-      expect(withFix).toBe(true);
+jest.mock('~/hooks', () => ({
+  useAttachFileOptions: jest.fn(),
+}));
 
-      // Without fix: only currentProvider checked = false
-      const withoutFix = isDocumentSupportedProvider(currentProvider || endpointType);
-      expect(withoutFix).toBe(false);
-    });
+jest.mock('~/hooks/useLocalize', () => ({
+  __esModule: true,
+  default: () => (key: string) => key,
+}));
 
-    it('should show upload option for any custom gateway with OpenAI endpointType', () => {
-      const currentProvider = 'my-custom-gateway';
-      const endpointType = EModelEndpoint.openAI;
+jest.mock('~/Providers', () => ({
+  useDragDropContext: () => ({
+    conversationId: 'test-convo',
+    agentId: undefined,
+    endpoint: 'openAI',
+    endpointType: 'openAI',
+    useResponsesApi: false,
+  }),
+}));
 
-      const result =
-        isDocumentSupportedProvider(endpointType) || isDocumentSupportedProvider(currentProvider);
-      expect(result).toBe(true);
-    });
+const mockUseAttachFileOptions = jest.requireMock('~/hooks').useAttachFileOptions;
 
-    it('should fallback to currentProvider when endpointType is undefined', () => {
-      const currentProvider = EModelEndpoint.openAI;
-      const endpointType = undefined;
+function setupMocks({
+  resolveDefault = jest.fn(() => undefined),
+  overrideOptions = [] as Array<{
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    toolResource?: EToolResources;
+  }>,
+  showEscapeHatch = true,
+} = {}) {
+  mockUseAttachFileOptions.mockReturnValue({ resolveDefault, overrideOptions, showEscapeHatch });
+  return { resolveDefault };
+}
 
-      const result =
-        isDocumentSupportedProvider(endpointType) || isDocumentSupportedProvider(currentProvider);
-      expect(result).toBe(true);
-    });
+const file = new File(['data'], 'doc.pdf', { type: 'application/pdf' });
 
-    it('should fallback to currentProvider when endpointType is null', () => {
-      const currentProvider = EModelEndpoint.anthropic;
-      const endpointType = null;
+describe('DragDropModal', () => {
+  beforeEach(jest.clearAllMocks);
 
-      const result =
-        isDocumentSupportedProvider(endpointType as any) ||
-        isDocumentSupportedProvider(currentProvider);
-      expect(result).toBe(true);
-    });
-
-    it('should return false when neither provider supports documents', () => {
-      const currentProvider = 'unsupported-provider';
-      const endpointType = 'unsupported-endpoint' as any;
-
-      const result =
-        isDocumentSupportedProvider(endpointType) || isDocumentSupportedProvider(currentProvider);
-      expect(result).toBe(false);
-    });
+  it('renders nothing when not visible', () => {
+    setupMocks();
+    const { container } = render(
+      <DragDropModal files={[file]} isVisible={false} setShowModal={jest.fn()} onOptionSelect={jest.fn()} />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
-  describe('supported providers', () => {
-    const supportedProviders = [
-      { name: 'OpenAI', value: EModelEndpoint.openAI },
-      { name: 'Anthropic', value: EModelEndpoint.anthropic },
-      { name: 'Google', value: EModelEndpoint.google },
-      { name: 'Custom', value: EModelEndpoint.custom },
-    ];
-
-    supportedProviders.forEach(({ name, value }) => {
-      it(`should recognize ${name} as supported`, () => {
-        expect(isDocumentSupportedProvider(value)).toBe(true);
-      });
+  it('shows the recommended native upload option when the default resource is undefined', () => {
+    setupMocks({
+      resolveDefault: jest.fn(() => undefined),
+      overrideOptions: [
+        { key: 'provider', label: 'Upload to Provider', icon: null },
+        { key: 'context', label: 'Upload as Text', icon: null, toolResource: EToolResources.context },
+      ],
     });
-
-    it('should NOT recognize Azure OpenAI as supported (requires useResponsesApi)', () => {
-      expect(isDocumentSupportedProvider(EModelEndpoint.azureOpenAI)).toBe(false);
-    });
+    render(
+      <DragDropModal files={[file]} isVisible={true} setShowModal={jest.fn()} onOptionSelect={jest.fn()} />,
+    );
+    expect(screen.getByText('Upload to Provider')).toBeInTheDocument();
+    expect(screen.getByText('com_ui_recommended')).toBeInTheDocument();
   });
 
-  describe('real-world scenarios', () => {
-    it('should handle LiteLLM gateway pointing to OpenAI', () => {
-      const scenario = {
-        currentProvider: 'litellm',
-        endpointType: EModelEndpoint.openAI,
-      };
-
-      expect(
-        isDocumentSupportedProvider(scenario.endpointType) ||
-          isDocumentSupportedProvider(scenario.currentProvider),
-      ).toBe(true);
+  it('selecting the recommended option calls onOptionSelect with the resolved default', () => {
+    const onOptionSelect = jest.fn();
+    setupMocks({
+      resolveDefault: jest.fn(() => EToolResources.context),
+      overrideOptions: [
+        { key: 'provider', label: 'Upload to Provider', icon: null },
+        { key: 'context', label: 'Upload as Text', icon: null, toolResource: EToolResources.context },
+      ],
     });
-
-    it('should handle direct OpenAI connection', () => {
-      const scenario = {
-        currentProvider: EModelEndpoint.openAI,
-        endpointType: EModelEndpoint.openAI,
-      };
-
-      expect(
-        isDocumentSupportedProvider(scenario.endpointType) ||
-          isDocumentSupportedProvider(scenario.currentProvider),
-      ).toBe(true);
-    });
-
-    it('should handle unsupported custom endpoint without override', () => {
-      const scenario = {
-        currentProvider: 'my-unsupported-endpoint',
-        endpointType: undefined,
-      };
-
-      expect(
-        isDocumentSupportedProvider(scenario.endpointType) ||
-          isDocumentSupportedProvider(scenario.currentProvider),
-      ).toBe(false);
-    });
-    it('should handle agents endpoints with document supported providers', () => {
-      const scenario = {
-        currentProvider: EModelEndpoint.google,
-        endpointType: EModelEndpoint.agents,
-      };
-
-      expect(
-        isDocumentSupportedProvider(scenario.endpointType) ||
-          isDocumentSupportedProvider(scenario.currentProvider),
-      ).toBe(true);
-    });
-
-    it('should handle Azure OpenAI endpointType when Responses API is enabled', () => {
-      const scenario = {
-        currentProvider: EModelEndpoint.agents,
-        endpointType: EModelEndpoint.azureOpenAI,
-        useResponsesApi: true,
-      };
-
-      const isAzureWithResponsesApi =
-        (scenario.currentProvider === EModelEndpoint.azureOpenAI ||
-          scenario.endpointType === EModelEndpoint.azureOpenAI) &&
-        scenario.useResponsesApi === true;
-
-      expect(
-        isDocumentSupportedProvider(scenario.endpointType) ||
-          isDocumentSupportedProvider(scenario.currentProvider) ||
-          isAzureWithResponsesApi,
-      ).toBe(true);
-    });
+    render(
+      <DragDropModal
+        files={[file]}
+        isVisible={true}
+        setShowModal={jest.fn()}
+        onOptionSelect={onOptionSelect}
+      />,
+    );
+    fireEvent.click(screen.getByText('Upload as Text'));
+    expect(onOptionSelect).toHaveBeenCalledWith(EToolResources.context);
   });
 
-  describe('HEIC/HEIF file type inference', () => {
-    it('should infer image/heic for .heic files when browser returns empty type', () => {
-      const fileName = 'photo.heic';
-      const browserType = '';
-
-      const inferredType = inferMimeType(fileName, browserType);
-      expect(inferredType).toBe('image/heic');
+  it('hides the "more options" disclosure when showEscapeHatch is false', () => {
+    setupMocks({
+      showEscapeHatch: false,
+      overrideOptions: [
+        { key: 'provider', label: 'Upload to Provider', icon: null },
+        {
+          key: 'file_search',
+          label: 'Upload for File Search',
+          icon: null,
+          toolResource: EToolResources.file_search,
+        },
+      ],
     });
+    render(
+      <DragDropModal files={[file]} isVisible={true} setShowModal={jest.fn()} onOptionSelect={jest.fn()} />,
+    );
+    expect(screen.queryByText('com_ui_more_options')).not.toBeInTheDocument();
+    expect(screen.queryByText('Upload for File Search')).not.toBeInTheDocument();
+  });
 
-    it('should infer image/heif for .heif files when browser returns empty type', () => {
-      const fileName = 'photo.heif';
-      const browserType = '';
-
-      const inferredType = inferMimeType(fileName, browserType);
-      expect(inferredType).toBe('image/heif');
+  it('reveals remaining options behind "more options" and selecting one calls onOptionSelect', () => {
+    const onOptionSelect = jest.fn();
+    setupMocks({
+      resolveDefault: jest.fn(() => undefined),
+      overrideOptions: [
+        { key: 'provider', label: 'Upload to Provider', icon: null },
+        {
+          key: 'file_search',
+          label: 'Upload for File Search',
+          icon: null,
+          toolResource: EToolResources.file_search,
+        },
+      ],
     });
+    render(
+      <DragDropModal
+        files={[file]}
+        isVisible={true}
+        setShowModal={jest.fn()}
+        onOptionSelect={onOptionSelect}
+      />,
+    );
 
-    it('should handle uppercase .HEIC extension', () => {
-      const fileName = 'IMG_1234.HEIC';
-      const browserType = '';
-
-      const inferredType = inferMimeType(fileName, browserType);
-      expect(inferredType).toBe('image/heic');
-    });
-
-    it('should preserve browser-provided type when available', () => {
-      const fileName = 'photo.jpg';
-      const browserType = 'image/jpeg';
-
-      const inferredType = inferMimeType(fileName, browserType);
-      expect(inferredType).toBe('image/jpeg');
-    });
-
-    it('should not override browser type even if extension differs', () => {
-      const fileName = 'renamed.heic';
-      const browserType = 'image/png';
-
-      const inferredType = inferMimeType(fileName, browserType);
-      expect(inferredType).toBe('image/png');
-    });
-
-    it('should correctly identify HEIC as image type for upload options', () => {
-      const heicType = inferMimeType('photo.heic', '');
-      expect(heicType.startsWith('image/')).toBe(true);
-    });
-
-    it('should return empty string for unknown extension with no browser type', () => {
-      const fileName = 'file.xyz';
-      const browserType = '';
-
-      const inferredType = inferMimeType(fileName, browserType);
-      expect(inferredType).toBe('');
-    });
+    expect(screen.queryByText('Upload for File Search')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('com_ui_more_options'));
+    fireEvent.click(screen.getByText('Upload for File Search'));
+    expect(onOptionSelect).toHaveBeenCalledWith(EToolResources.file_search);
   });
 });

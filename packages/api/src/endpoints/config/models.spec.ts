@@ -297,3 +297,66 @@ describe('createLoadConfigModels – in-request fetch coalescing', () => {
     expect(fetchModels).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('createLoadConfigModels – default model ordering', () => {
+  const buildAppConfig = (modelsOverride: Record<string, unknown>) => ({
+    endpoints: {
+      [EModelEndpoint.custom]: [
+        {
+          name: 'TestProxy',
+          baseURL: 'https://admin-trusted.example.com/v1',
+          apiKey: 'sk-system-key',
+          models: modelsOverride,
+        },
+      ],
+    },
+  });
+
+  it('moves the configured default model to the front of a successful fetch', async () => {
+    const fetchModels = jest.fn().mockResolvedValue(['model-a', 'preferred-model', 'model-b']);
+    const loadConfigModels = createLoadConfigModels({
+      getAppConfig: jest
+        .fn()
+        .mockResolvedValue(buildAppConfig({ fetch: true, default: ['preferred-model'] })),
+      getUserKeyValues: jest.fn(),
+      fetchModels,
+    });
+
+    const req = { user: { id: 'user-1' }, config: undefined } as unknown as ServerRequest;
+    const modelsConfig = await loadConfigModels(req);
+
+    expect(modelsConfig.TestProxy).toEqual(['preferred-model', 'model-a', 'model-b']);
+  });
+
+  it('leaves fetch order unchanged when the configured default is not in the results', async () => {
+    const fetchModels = jest.fn().mockResolvedValue(['model-a', 'model-b']);
+    const loadConfigModels = createLoadConfigModels({
+      getAppConfig: jest
+        .fn()
+        .mockResolvedValue(buildAppConfig({ fetch: true, default: ['missing-model'] })),
+      getUserKeyValues: jest.fn(),
+      fetchModels,
+    });
+
+    const req = { user: { id: 'user-1' }, config: undefined } as unknown as ServerRequest;
+    const modelsConfig = await loadConfigModels(req);
+
+    expect(modelsConfig.TestProxy).toEqual(['model-a', 'model-b']);
+  });
+
+  it('falls back to the configured default list when the fetch returns nothing', async () => {
+    const fetchModels = jest.fn().mockResolvedValue([]);
+    const loadConfigModels = createLoadConfigModels({
+      getAppConfig: jest
+        .fn()
+        .mockResolvedValue(buildAppConfig({ fetch: true, default: ['fallback-model'] })),
+      getUserKeyValues: jest.fn(),
+      fetchModels,
+    });
+
+    const req = { user: { id: 'user-1' }, config: undefined } as unknown as ServerRequest;
+    const modelsConfig = await loadConfigModels(req);
+
+    expect(modelsConfig.TestProxy).toEqual(['fallback-model']);
+  });
+});
