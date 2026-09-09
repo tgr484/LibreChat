@@ -40,7 +40,7 @@ const AttachFileButton = ({
       disabled={disabled ?? false}
       onClick={onPrimaryClick}
       className={cn(
-        'flex size-9 items-center justify-center rounded-full p-1 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-opacity-50',
+        'flex size-theme-control items-center justify-center rounded-theme-control-round p-1 transition-colors duration-theme-fast hover:bg-surface-composer-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-primary focus-visible:ring-opacity-50',
         hasEscapeHatch && 'rounded-r-none',
       )}
     >
@@ -67,8 +67,8 @@ const AttachFileButton = ({
       id="attach-file-menu-button"
       aria-label="More upload options"
       className={cn(
-        'flex h-9 w-5 items-center justify-center rounded-r-full border-l border-border-light hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-opacity-50',
-        isPopoverActive && 'bg-surface-hover',
+        'flex h-theme-control w-5 items-center justify-center rounded-r-theme-control-round border-l border-border-light transition-colors duration-theme-fast hover:bg-surface-composer-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-primary focus-visible:ring-opacity-50',
+        isPopoverActive && 'bg-surface-composer-hover',
       )}
     >
       <ChevronDown className="icon-sm text-text-secondary" aria-hidden="true" />

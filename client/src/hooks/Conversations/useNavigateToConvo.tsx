@@ -241,6 +241,7 @@ const useNavigateToConvo = (index = 0) => {
     const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
     if (!convo.endpoint || !endpointsConfig?.[convo.endpoint]) {
       /* undefined/removed endpoint edge case */
+      const startupConfig = queryClient.getQueryData<TStartupConfig>(startupConfigKey(true));
       const modelsConfig = queryClient.getQueryData<TModelsConfig>([QueryKeys.models]);
       const defaultEndpoint = getDefaultEndpoint({
         convoSetup: conversation,

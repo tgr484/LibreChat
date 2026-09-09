@@ -19,7 +19,7 @@ const themedControls = [
   ['CodeApprovalMenu.tsx', ['composerControlClasses()', 'md:px-theme-normal']],
   ['TokenUsage/index.tsx', ['size-theme-control', 'rounded-theme-control-round']],
   ['Files/AttachFile.tsx', ['size-theme-control', 'rounded-theme-control-round']],
-  ['Files/AttachFileMenu.tsx', ['size-theme-control', 'rounded-theme-control-round']],
+  ['Files/AttachFileButton.tsx', ['size-theme-control', 'rounded-theme-control-round']],
   ['ToolsDropdown.tsx', ['size-theme-control', 'rounded-theme-control-round']],
 ] as const;
 

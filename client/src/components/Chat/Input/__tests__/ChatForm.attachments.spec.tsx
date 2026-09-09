@@ -182,10 +182,10 @@ describe('ChatForm attachments', () => {
     expect(textarea).toHaveValue('hi');
   }, 20000);
 
-  test('does not steal focus when clicking the nested attachment icon', async () => {
+  test('does not steal focus when clicking the nested escape-hatch icon', async () => {
     renderComposer();
     const textarea = await screen.findByTestId('text-input');
-    const trigger = screen.getByRole('button', { name: 'Attach File Options' });
+    const trigger = screen.getByRole('button', { name: 'More upload options' });
     expect(trigger).toBeEnabled();
     const icon = trigger.querySelector('svg');
     expect(icon).not.toBeNull();
@@ -194,19 +194,19 @@ describe('ChatForm attachments', () => {
     await userEvent.click(icon as SVGElement);
 
     expect(focus).not.toHaveBeenCalled();
-    expect(await screen.findByRole('menu', { name: 'Attach File Options' })).toBeInTheDocument();
+    expect(await screen.findByRole('menu', { name: 'More upload options' })).toBeInTheDocument();
   }, 20000);
 
   test('closes an open menu when the textarea is clicked', async () => {
     renderComposer();
     const textarea = await screen.findByTestId('text-input');
-    await userEvent.click(screen.getByRole('button', { name: 'Attach File Options' }));
-    expect(await screen.findByRole('menu', { name: 'Attach File Options' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'More upload options' }));
+    expect(await screen.findByRole('menu', { name: 'More upload options' })).toBeInTheDocument();
 
     await userEvent.click(textarea);
 
     await waitFor(() =>
-      expect(screen.queryByRole('menu', { name: 'Attach File Options' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('menu', { name: 'More upload options' })).not.toBeInTheDocument(),
     );
     expect(textarea).toHaveFocus();
   }, 20000);
