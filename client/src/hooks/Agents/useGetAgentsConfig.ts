@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
-import { EModelEndpoint, AgentCapabilities } from 'librechat-data-provider';
+import {
+  EModelEndpoint,
+  AgentCapabilities,
+  defaultAgentCapabilities,
+} from 'librechat-data-provider';
 import type { TAgentsEndpoint, TEndpointsConfig } from 'librechat-data-provider';
 import { useGetEndpointsQuery } from '~/data-provider';
 
@@ -28,7 +32,7 @@ export default function useGetAgentsConfig(options?: UseGetAgentsConfigOptions):
       ...config,
       capabilities: Array.isArray(config.capabilities)
         ? config.capabilities.map((cap) => cap as unknown as AgentCapabilities)
-        : ([] as AgentCapabilities[]),
+        : (defaultAgentCapabilities as AgentCapabilities[]),
     } as TAgentsEndpoint;
   }, [endpointsConfig]);
 
