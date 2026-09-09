@@ -151,8 +151,8 @@ export default defineConfig(({ command }) => ({
       },
       includeAssets: [],
       manifest: {
-        name: 'LibreChat',
-        short_name: 'LibreChat',
+        name: 'RN-T GPT',
+        short_name: 'RN-T GPT',
         display: 'standalone',
         background_color: '#000000',
         theme_color: '#009688',
