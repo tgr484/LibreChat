@@ -56,14 +56,21 @@ export const isAzureResponsesApi = ({
   (currentProvider === EModelEndpoint.azureOpenAI || endpointType === EModelEndpoint.azureOpenAI) &&
   useResponsesApi === true;
 
-export const providerSupportsNativeDocs = ({
-  currentProvider,
-  endpointType,
-  useResponsesApi,
-}: NormalizedProviderContext): boolean =>
-  isDocumentSupportedProvider(endpointType) ||
-  isDocumentSupportedProvider(currentProvider) ||
-  isAzureResponsesApi({ currentProvider, endpointType, useResponsesApi });
+export const providerSupportsNativeDocs = (
+  { currentProvider, endpointType, useResponsesApi }: NormalizedProviderContext,
+  /** A custom endpoint's underlying model may not actually support native document input;
+   * once OCR is configured, prefer it over guessing (see `getDefaultToolResource`). */
+  contextEnabled = false,
+): boolean => {
+  if (endpointType === EModelEndpoint.custom && contextEnabled) {
+    return false;
+  }
+  return (
+    isDocumentSupportedProvider(endpointType) ||
+    isDocumentSupportedProvider(currentProvider) ||
+    isAzureResponsesApi({ currentProvider, endpointType, useResponsesApi })
+  );
+};
 
 /** Whether a single file can be sent natively to the active provider (vision/native document understanding), with no server-side text/OCR extraction. */
 export const isFileValidForProvider = (

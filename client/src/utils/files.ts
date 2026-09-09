@@ -538,6 +538,12 @@ const isProviderAttachType = (type: string, ctx: UploadOptionContext): boolean =
     if (currentProvider === Providers.BEDROCK || ctx.endpointType === EModelEndpoint.bedrock) {
       return type.startsWith('image/') || isBedrockDocumentType(type);
     }
+    /** A custom endpoint's underlying model may not actually support native document input
+     * (see `getDefaultToolResource`); once OCR is configured, prefer it over guessing and
+     * offering an option that silently fails for non-image files. */
+    if (ctx.endpointType === EModelEndpoint.custom && ctx.contextEnabled) {
+      return type.startsWith('image/');
+    }
     return type.startsWith('image/') || type === 'application/pdf';
   }
   return type.startsWith('image/');

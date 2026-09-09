@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { OGDialog, OGDialogTemplate } from '@librechat/client';
+import { Constants, Providers, EToolResources } from 'librechat-data-provider';
 import {
   FileSearch,
   ImageUpIcon,
@@ -9,18 +10,12 @@ import {
   TerminalSquareIcon,
 } from 'lucide-react';
 import {
-  Constants,
-  Providers,
-  EToolResources,
-  EModelEndpoint,
-  isDocumentSupportedProvider,
-} from 'librechat-data-provider';
-import {
   useLocalize,
   useUploadOptions,
   useFileUploadRouter,
   useAgentToolPermissions,
 } from '~/hooks';
+import { providerSupportsNativeDocs } from '~/utils/attachFileDefaults';
 import { useDragDropContext, useUploadModalContext } from '~/Providers';
 import { ephemeralAgentByConvoId } from '~/store';
 
@@ -32,7 +27,7 @@ const DragDropModal = () => {
     ephemeralAgentByConvoId(conversationId ?? Constants.NEW_CONVO),
   );
   const { provider } = useAgentToolPermissions(agentId, ephemeralAgent);
-  const { getOptions } = useUploadOptions();
+  const { getOptions, contextEnabled } = useUploadOptions();
   const routeFiles = useFileUploadRouter();
 
   const isProviderDocSupported = useMemo(() => {
@@ -40,16 +35,11 @@ const DragDropModal = () => {
     if (currentProvider.toLowerCase() === Providers.OPENROUTER) {
       currentProvider = Providers.OPENROUTER;
     }
-    const isAzureWithResponsesApi =
-      (currentProvider === EModelEndpoint.azureOpenAI ||
-        endpointType === EModelEndpoint.azureOpenAI) &&
-      useResponsesApi === true;
-    return (
-      isDocumentSupportedProvider(endpointType) ||
-      isDocumentSupportedProvider(currentProvider) ||
-      isAzureWithResponsesApi
+    return providerSupportsNativeDocs(
+      { currentProvider, endpointType, useResponsesApi },
+      contextEnabled,
     );
-  }, [provider, endpoint, endpointType, useResponsesApi]);
+  }, [provider, endpoint, endpointType, useResponsesApi, contextEnabled]);
 
   const getOptionMeta = (value: EToolResources | undefined) => {
     switch (value) {

@@ -83,5 +83,10 @@ export default function useUploadOptions() {
     ],
   );
 
-  return { getOptions, uploadsDisabled, isConfigPending };
+  return {
+    getOptions,
+    uploadsDisabled,
+    isConfigPending,
+    contextEnabled: capabilities.contextEnabled,
+  };
 }
