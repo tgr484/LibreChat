@@ -48,7 +48,11 @@ jest.mock('@librechat/client', () => {
     DropdownPopup: (props) =>
       R.createElement(
         'div',
-        null,
+        {
+          'data-testid': 'dropdown-popup',
+          'data-modal': props.modal,
+          'data-portal': props.portal,
+        },
         R.createElement('div', { onClick: () => props.setIsOpen(!props.isOpen) }, props.trigger),
         props.isOpen &&
           R.createElement(

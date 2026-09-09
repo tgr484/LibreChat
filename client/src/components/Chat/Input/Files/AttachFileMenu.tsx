@@ -1,8 +1,18 @@
 import React, { useRef, useMemo, useState, useCallback } from 'react';
 import { useRecoilState } from 'recoil';
 import { FileUpload } from '@librechat/client';
-import { EToolResources, isPermissiveMimeConfig } from 'librechat-data-provider';
-import type { EndpointFileConfig, TConversation } from 'librechat-data-provider';
+import {
+  EToolResources,
+  bedrockDocumentMimeTypes,
+  getConfiguredMimeAccept,
+  isPermissiveMimeConfig,
+} from 'librechat-data-provider';
+import type {
+  TConversation,
+  EndpointFileConfig,
+  MimeUploadCapability,
+} from 'librechat-data-provider';
+import type { AttachFileUploadType } from '~/utils/attachFileDefaults';
 import type { SharePointFile } from '~/data-provider/Files/sharepoint';
 import type { AttachFileOption } from '~/hooks/Files/useAttachFileOptions';
 import type { ExtendedFile, FileSetter } from '~/common';
@@ -17,6 +27,22 @@ import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcut
 import { SharePointPickerDialog } from '~/components/SharePoint';
 import { ephemeralAgentByConvoId } from '~/store';
 import AttachFileButton from './AttachFileButton';
+
+/** What each provider upload path can actually send, used to scope the picker filter to selectable files. */
+const fileTypeCapabilities: Record<AttachFileUploadType, MimeUploadCapability> = {
+  image: { categories: ['image'] },
+  document: { categories: ['document'] },
+  image_document: { categories: ['image', 'document'] },
+  image_document_extended: {
+    categories: ['image', 'document'],
+    documentMimeTypes: bedrockDocumentMimeTypes,
+  },
+  /** Google/Vertex/OpenRouter media path: documents are limited to PDF (see isProviderAttachType). */
+  image_document_video_audio: {
+    categories: ['image', 'document', 'audio', 'video'],
+    documentMimeTypes: ['application/pdf'],
+  },
+};
 
 interface AttachFileMenuProps {
   agentId?: string | null;
@@ -89,7 +115,11 @@ const AttachFileMenu = ({
       if (isPermissiveMimeConfig(supportedMimeTypes)) {
         inputRef.current.accept = '';
       } else if (fileType !== undefined) {
-        inputRef.current.accept = getAcceptForFileType(fileType);
+        const configuredAccept = getConfiguredMimeAccept(
+          supportedMimeTypes,
+          fileTypeCapabilities[fileType],
+        );
+        inputRef.current.accept = configuredAccept ?? getAcceptForFileType(fileType);
       } else {
         inputRef.current.accept = getAcceptFromSupportedMimeTypes(supportedMimeTypes);
       }
