@@ -807,8 +807,10 @@ export type TAssistantEndpoint = z.infer<typeof assistantEndpointSchema>;
 export const defaultAgentCapabilities = [
   // Commented as requires latest Code Interpreter API
   // AgentCapabilities.programmatic_tools,
+  // Code Interpreter is disabled by default for this deployment; re-add here (not via
+  // librechat.yaml) to keep it off even where `endpoints.agents.capabilities` is unset.
+  // AgentCapabilities.execute_code,
   AgentCapabilities.deferred_tools,
-  AgentCapabilities.execute_code,
   AgentCapabilities.file_search,
   AgentCapabilities.web_search,
   AgentCapabilities.artifacts,
