@@ -70,7 +70,8 @@ export default function useAttachFileOptions({
     ephemeralAgent,
   );
   const { data: startupConfig } = useGetStartupConfig();
-  const sharePointEnabled = includeSharePoint && (startupConfig?.sharePointFilePickerEnabled ?? false);
+  const sharePointEnabled =
+    includeSharePoint && (startupConfig?.sharePointFilePickerEnabled ?? false);
   const showEscapeHatch = startupConfig?.interface?.fileAttachOptions !== false;
 
   const currentProvider = useMemo(
@@ -79,8 +80,12 @@ export default function useAttachFileOptions({
   );
 
   const providerSupportsDocs = useMemo(
-    () => providerSupportsNativeDocs({ currentProvider, endpointType, useResponsesApi }),
-    [currentProvider, endpointType, useResponsesApi],
+    () =>
+      providerSupportsNativeDocs(
+        { currentProvider, endpointType, useResponsesApi },
+        capabilities.contextEnabled,
+      ),
+    [currentProvider, endpointType, useResponsesApi, capabilities.contextEnabled],
   );
 
   const resolveDefault = useCallback(

@@ -1,8 +1,8 @@
 import React from 'react';
 import { RecoilRoot } from 'recoil';
+import { EToolResources } from 'librechat-data-provider';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { EToolResources } from 'librechat-data-provider';
 import AttachFileMenu from '../AttachFileMenu';
 
 jest.mock('~/hooks', () => ({
@@ -48,7 +48,11 @@ jest.mock('@librechat/client', () => {
     DropdownPopup: (props) =>
       R.createElement(
         'div',
-        null,
+        {
+          'data-testid': 'dropdown-popup',
+          'data-modal': props.modal,
+          'data-portal': props.portal,
+        },
         R.createElement('div', { onClick: () => props.setIsOpen(!props.isOpen) }, props.trigger),
         props.isOpen &&
           R.createElement(
@@ -91,7 +95,7 @@ const translations: Record<string, string> = {
 };
 
 function setupMocks({
-  resolveDefault = jest.fn(() => undefined),
+  resolveDefault = jest.fn((): EToolResources | undefined => undefined),
   overrideOptions = [] as Array<{
     key: string;
     label: string;
@@ -184,7 +188,12 @@ describe('AttachFileMenu', () => {
     const { handleFileChange } = setupMocks({
       resolveDefault,
       overrideOptions: [
-        { key: 'file_search', label: 'Upload for File Search', icon: null, toolResource: EToolResources.file_search },
+        {
+          key: 'file_search',
+          label: 'Upload for File Search',
+          icon: null,
+          toolResource: EToolResources.file_search,
+        },
       ],
     });
     renderMenu();

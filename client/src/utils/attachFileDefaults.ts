@@ -8,6 +8,7 @@ import {
   bedrockDocumentExtensions,
   isDocumentSupportedProvider,
 } from 'librechat-data-provider';
+import type { RegexLike } from 'librechat-data-provider';
 
 export type AttachFileUploadType =
   | 'image'
@@ -40,35 +41,41 @@ export const normalizeProvider = (provider?: string | null): string | undefined 
   return provider;
 };
 
+/** Shape needed once `provider || endpoint` has already been resolved to a single normalized value. */
+export interface NormalizedProviderContext {
+  currentProvider?: string;
+  endpointType?: string | null;
+  useResponsesApi?: boolean;
+}
+
 export const isAzureResponsesApi = ({
   currentProvider,
   endpointType,
   useResponsesApi,
-}: {
-  currentProvider?: string;
-  endpointType?: string | null;
-  useResponsesApi?: boolean;
-}): boolean =>
+}: NormalizedProviderContext): boolean =>
   (currentProvider === EModelEndpoint.azureOpenAI || endpointType === EModelEndpoint.azureOpenAI) &&
   useResponsesApi === true;
 
-export const providerSupportsNativeDocs = ({
-  currentProvider,
-  endpointType,
-  useResponsesApi,
-}: {
-  currentProvider?: string;
-  endpointType?: string | null;
-  useResponsesApi?: boolean;
-}): boolean =>
-  isDocumentSupportedProvider(endpointType) ||
-  isDocumentSupportedProvider(currentProvider) ||
-  isAzureResponsesApi({ currentProvider, endpointType, useResponsesApi });
+export const providerSupportsNativeDocs = (
+  { currentProvider, endpointType, useResponsesApi }: NormalizedProviderContext,
+  /** A custom endpoint's underlying model may not actually support native document input;
+   * once OCR is configured, prefer it over guessing (see `getDefaultToolResource`). */
+  contextEnabled = false,
+): boolean => {
+  if (endpointType === EModelEndpoint.custom && contextEnabled) {
+    return false;
+  }
+  return (
+    isDocumentSupportedProvider(endpointType) ||
+    isDocumentSupportedProvider(currentProvider) ||
+    isAzureResponsesApi({ currentProvider, endpointType, useResponsesApi })
+  );
+};
 
 /** Whether a single file can be sent natively to the active provider (vision/native document understanding), with no server-side text/OCR extraction. */
 export const isFileValidForProvider = (
   file: FileLike,
-  { currentProvider, endpointType, useResponsesApi }: ProviderUploadContext,
+  { currentProvider, endpointType, useResponsesApi }: NormalizedProviderContext,
 ): boolean => {
   const type = inferMimeType(file.name, file.type);
   if (!type) {
@@ -87,7 +94,8 @@ export const isFileValidForProvider = (
       type === 'application/pdf'
     );
   }
-  const isBedrock = currentProvider === Providers.BEDROCK || endpointType === EModelEndpoint.bedrock;
+  const isBedrock =
+    currentProvider === Providers.BEDROCK || endpointType === EModelEndpoint.bedrock;
   if (isBedrock) {
     return type.startsWith('image/') || isBedrockDocumentType(type);
   }
@@ -166,7 +174,7 @@ export const getAcceptForFileType = (fileType?: AttachFileUploadType): string =>
  * LibreChat's known MIME type list to build the concrete filter; an explicitly permissive config
  * (e.g. `.*`) is handled separately by the caller via `isPermissiveMimeConfig`.
  */
-export const getAcceptFromSupportedMimeTypes = (supportedMimeTypes?: RegExp[]): string => {
+export const getAcceptFromSupportedMimeTypes = (supportedMimeTypes?: RegexLike[]): string => {
   if (!supportedMimeTypes || supportedMimeTypes.length === 0) {
     return '';
   }
