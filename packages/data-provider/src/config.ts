@@ -2375,6 +2375,61 @@ export const memorySchema = z.object({
 
 export type TMemoryConfig = DeepPartial<z.infer<typeof memorySchema>>;
 
+/**
+ * DocHub integration: agentic access to the user's DocHub collections.
+ * Tools read documents there and condense them with their own LLM calls, so the
+ * limits below bound one tool call, not one chat turn.
+ */
+export const dochubLimitsSchema = z.object({
+  /** Whole tool call; on expiry the sub-agent reduces what it already read. */
+  wallClockMs: z.number().int().positive().default(600000),
+  /** Kept aside from `wallClockMs` so the reduce step always runs. */
+  reduceReserveMs: z.number().int().positive().default(45000),
+  maxHttpRequests: z.number().int().positive().default(150),
+  maxLlmCalls: z.number().int().positive().default(80),
+  maxChapters: z.number().int().positive().default(40),
+  maxChapterChars: z.number().int().positive().default(30000),
+  maxDocuments: z.number().int().positive().default(6),
+  chapterConcurrency: z.number().int().positive().max(16).default(4),
+  documentConcurrency: z.number().int().positive().max(8).default(3),
+  extractionCharLimit: z.number().int().positive().default(1200),
+  resultCharLimit: z.number().int().positive().default(6000),
+});
+
+export const dochubAgentSchema = z.object({
+  /** Defaults to the endpoint and model of the chat that called the tool. */
+  endpoint: z.string().optional(),
+  model: z.string().optional(),
+  temperature: z.number().min(0).max(2).default(0),
+  maxOutputTokens: z.number().int().positive().default(900),
+});
+
+export const dochubSearchSchema = z.object({
+  defaultTopK: z.number().int().min(1).max(20).default(8),
+  maxTopK: z.number().int().min(1).max(20).default(20),
+  /** DocHub shares its `ask_slot` with its own UI chat, so search can be refused. */
+  slotRetries: z.number().int().min(0).max(5).default(2),
+  slotRetryDelayMs: z.number().int().positive().default(4000),
+});
+
+export const dochubSchema = z.object({
+  enabled: z.boolean().default(false),
+  baseURL: z.string().optional(),
+  issuer: z.string().default('librechat'),
+  audience: z.string().default('dochub-integration'),
+  keyId: z.string().optional(),
+  privateKeyPath: z.string().optional(),
+  /** DocHub rejects `exp - iat > 120`. */
+  tokenTtlSeconds: z.number().int().min(15).max(110).default(60),
+  requestTimeoutMs: z.number().int().positive().default(20000),
+  allowedAddresses: allowedAddressesSchema,
+  agent: dochubAgentSchema.optional(),
+  limits: dochubLimitsSchema.optional(),
+  search: dochubSearchSchema.optional(),
+});
+
+export type TDochubConfig = DeepPartial<z.infer<typeof dochubSchema>>;
+
 export const summarizationTriggerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('token_ratio'),
@@ -2625,6 +2680,7 @@ export const configSchema = z.object({
   webSearch: webSearchSchema.optional(),
   langfuse: langfuseConfigSchema.optional(),
   memory: memorySchema.optional(),
+  dochub: dochubSchema.optional(),
   summarization: summarizationConfigSchema.optional(),
   skillSync: skillSyncConfigSchema,
   secureImageLinks: z.boolean().optional(),
