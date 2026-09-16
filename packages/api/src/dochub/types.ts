@@ -30,6 +30,11 @@ export interface DochubRuntimeConfig {
   search: DochubSearchSettings;
 }
 
+export interface DochubSignedToken {
+  token: string;
+  jti: string;
+}
+
 export type DochubSubject =
   | { ok: true; sub: string; lcUid?: string }
   | { ok: false; reason: 'not_ldap' | 'missing' | 'invalid_format' };

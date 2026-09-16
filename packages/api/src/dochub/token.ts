@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import type { IUser } from '@librechat/data-schemas';
 import type { KeyObject } from 'node:crypto';
-import type { DochubRuntimeConfig, DochubSubject } from './types';
+import type { DochubRuntimeConfig, DochubSignedToken, DochubSubject } from './types';
 
 /** DocHub rejects anything else with `401`, so a mismatch never reaches the wire. */
 const SUB_PATTERN = /^[a-z0-9._-]{1,64}$/;
@@ -48,9 +48,10 @@ export function signDochubToken(params: {
   key: KeyObject;
   sub: string;
   lcUid?: string;
-}): string {
+}): DochubSignedToken {
   const { config, key, sub, lcUid } = params;
-  return jwt.sign(
+  const jti = randomUUID();
+  const token = jwt.sign(
     {
       provider: 'ldap',
       ...(lcUid != null ? { lc_uid: lcUid } : {}),
@@ -63,7 +64,9 @@ export function signDochubToken(params: {
       audience: config.audience,
       subject: sub,
       expiresIn: config.tokenTtlSeconds,
-      jwtid: randomUUID(),
+      jwtid: jti,
     },
   );
+  /** `jti` comes back so the audit line can name the request without decoding it again. */
+  return { token, jti };
 }

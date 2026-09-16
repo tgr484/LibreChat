@@ -87,7 +87,7 @@ describe('signDochubToken', () => {
     signDochubToken({ config: runtime, key: privateKey, sub, lcUid });
 
   it('produces a token DocHub accepts: ES256, kid, and every required claim', () => {
-    const token = sign('ivanov', '65f0c3a1b2c3d4e5f6a7b8c9');
+    const { token, jti } = sign('ivanov', '65f0c3a1b2c3d4e5f6a7b8c9');
 
     const header = JSON.parse(
       Buffer.from(token.split('.')[0], 'base64url').toString('utf8'),
@@ -104,25 +104,23 @@ describe('signDochubToken', () => {
     expect(claims.sub).toBe('ivanov');
     expect(claims.provider).toBe('ldap');
     expect(claims.lc_uid).toBe('65f0c3a1b2c3d4e5f6a7b8c9');
-    expect(claims.jti).toEqual(expect.any(String));
+    expect(claims.jti).toBe(jti);
     expect((claims.exp as number) - (claims.iat as number)).toBe(60);
   });
 
   it('omits lc_uid when there is none', () => {
-    const claims = jwt.decode(sign()) as jwt.JwtPayload;
+    const claims = jwt.decode(sign().token) as jwt.JwtPayload;
     expect(claims).not.toHaveProperty('lc_uid');
   });
 
   /** A repeated jti is a 401 at DocHub: one token per request, retries included. */
   it('never repeats a jti', () => {
-    const ids = new Set(
-      Array.from({ length: 25 }, () => (jwt.decode(sign()) as jwt.JwtPayload).jti),
-    );
+    const ids = new Set(Array.from({ length: 25 }, () => sign().jti));
     expect(ids.size).toBe(25);
   });
 
   it('is rejected by a different public key', () => {
     const { publicKey: otherKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
-    expect(() => jwt.verify(sign(), otherKey, { algorithms: ['ES256'] })).toThrow();
+    expect(() => jwt.verify(sign().token, otherKey, { algorithms: ['ES256'] })).toThrow();
   });
 });
