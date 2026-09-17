@@ -1237,6 +1237,46 @@ endpoints:
 #     # model_parameters:
 #     #   temperature: 0.1
 
+# DocHub integration: agent tools for research inside DocHub collections
+# (dochub_collections, dochub_search, dochub_read, dochub_survey).
+# The tools read documents and condense them with their own LLM calls, so the
+# limits bound ONE tool call. Only LDAP users can use them. Without a valid
+# configuration the tools do not appear at all. See docs/dochub-integration.md.
+# dochub:
+#   enabled: true
+#   baseURL: "http://dochub:8000/api/integration/v1"
+#   # Must match DocHub's INTEGRATION_ISSUER / INTEGRATION_AUDIENCE
+#   issuer: "librechat"
+#   audience: "dochub-integration"
+#   # `kid` of the public key registered in DocHub's INTEGRATION_PUBLIC_KEYS
+#   keyId: "2026-09"
+#   # EC P-256 private key, mounted read-only (or DOCHUB_INTEGRATION_PRIVATE_KEY_PATH)
+#   privateKeyPath: "/app/secrets/librechat-dochub.pem"
+#   # (optional) host:port the baseURL must point at
+#   allowedAddresses: ["dochub:8000"]
+#   # (optional) Sub-agent model; defaults to the endpoint and model of the chat
+#   agent:
+#     # endpoint: "RNT"
+#     # model: "current_model"
+#     temperature: 0
+#     maxOutputTokens: 900
+#   # (optional) Budget of one tool call
+#   limits:
+#     wallClockMs: 600000       # whole call; a partial answer is returned on expiry
+#     reduceReserveMs: 45000    # time kept for the final summary
+#     maxHttpRequests: 150      # DocHub allows 120 requests per minute per user
+#     maxLlmCalls: 80
+#     maxChapters: 40           # parts of one document read by dochub_read
+#     maxDocuments: 6           # documents read by dochub_survey
+#     chapterConcurrency: 4
+#     documentConcurrency: 3
+#     extractionCharLimit: 1200
+#     resultCharLimit: 6000     # size of a tool answer in the chat context
+#   search:
+#     defaultTopK: 8
+#     slotRetries: 2            # DocHub's AI slot is shared with its own UI chat
+#     slotRetryDelayMs: 4000
+
 # Apply opt-in content filters to source-classified submitted and reusable content.
 # `filters` is base-config-only: database overrides and tombstones cannot add,
 # change, or remove this policy for individual users, groups, or roles.
