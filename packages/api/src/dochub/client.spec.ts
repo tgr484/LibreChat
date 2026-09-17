@@ -65,6 +65,7 @@ beforeEach(() => {
 const limits: DochubLimits = {
   wallClockMs: 600000,
   reduceReserveMs: 45000,
+  llmCallTimeoutMs: 60000,
   maxHttpRequests: 150,
   maxLlmCalls: 80,
   maxChapters: 40,
@@ -84,7 +85,7 @@ const runtime = (overrides: Partial<DochubRuntimeConfig> = {}): DochubRuntimeCon
   tokenTtlSeconds: 60,
   requestTimeoutMs: 2000,
   limits,
-  agent: { temperature: 0, maxOutputTokens: 900 },
+  agent: { temperature: 0, maxOutputTokens: 900, thinking: false },
   search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 10 },
   ...overrides,
 });
@@ -270,6 +271,28 @@ describe('createDochubClient — failures', () => {
 
     await expect(client.listCollections()).rejects.toMatchObject({ kind: 'aborted' });
     expect(recorded).toHaveLength(0);
+  });
+
+  /** Running out of time is a partial answer for the callers, not a user stop. */
+  it('reports the call deadline as a budget stop without retrying', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const budget = createRunBudget({ limits: { ...limits, wallClockMs: 1000 } });
+    jest.advanceTimersByTime(1001);
+    jest.useRealTimers();
+    const pauses: number[] = [];
+    const client = createDochubClient({
+      config: runtime(),
+      key: privateKey,
+      subject: { sub: 'ivanov' },
+      budget,
+      wait: async (ms) => {
+        pauses.push(ms);
+      },
+    });
+
+    await expect(client.listCollections()).rejects.toMatchObject({ kind: 'budget' });
+    expect(pauses).toEqual([]);
+    budget.dispose();
   });
 });
 

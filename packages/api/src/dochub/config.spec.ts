@@ -43,9 +43,11 @@ describe('resolveDochubConfig', () => {
       keyId: '2026-09',
       tokenTtlSeconds: 60,
     });
-    expect(resolved?.runtime.limits.wallClockMs).toBe(600000);
+    expect(resolved?.runtime.limits.wallClockMs).toBe(1800000);
     expect(resolved?.runtime.search.defaultTopK).toBe(8);
     expect(resolved?.runtime.agent.temperature).toBe(0);
+    expect(resolved?.runtime.agent.thinking).toBe(false);
+    expect(resolved?.runtime.limits.llmCallTimeoutMs).toBe(240000);
     expect(resolved?.key.asymmetricKeyType).toBe('ec');
     expect(JSON.stringify(resolved?.runtime)).not.toContain('PRIVATE KEY');
   });
@@ -57,7 +59,7 @@ describe('resolveDochubConfig', () => {
     expect(resolved?.runtime.limits.wallClockMs).toBe(120000);
     expect(resolved?.runtime.limits.maxChapters).toBe(5);
     /** Unset fields still come from the schema defaults. */
-    expect(resolved?.runtime.limits.maxLlmCalls).toBe(80);
+    expect(resolved?.runtime.limits.maxLlmCalls).toBe(300);
   });
 
   it('trims a trailing slash so route paths join cleanly', () => {

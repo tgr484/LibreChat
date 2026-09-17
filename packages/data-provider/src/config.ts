@@ -2381,12 +2381,17 @@ export type TMemoryConfig = DeepPartial<z.infer<typeof memorySchema>>;
  * limits below bound one tool call, not one chat turn.
  */
 export const dochubLimitsSchema = z.object({
-  /** Whole tool call; on expiry the sub-agent reduces what it already read. */
-  wallClockMs: z.number().int().positive().default(600000),
-  /** Kept aside from `wallClockMs` so the reduce step always runs. */
-  reduceReserveMs: z.number().int().positive().default(45000),
-  maxHttpRequests: z.number().int().positive().default(150),
-  maxLlmCalls: z.number().int().positive().default(80),
+  /**
+   * Safety ceiling for a whole tool call; on expiry the sub-agent reduces what
+   * it already read. Real pacing comes from `llmCallTimeoutMs` and the counters.
+   */
+  wallClockMs: z.number().int().positive().default(1800000),
+  /** Kept aside from `wallClockMs` so the reduce steps always run. */
+  reduceReserveMs: z.number().int().positive().default(90000),
+  /** One request to the model; a hung request fails alone, not the whole call. */
+  llmCallTimeoutMs: z.number().int().positive().default(240000),
+  maxHttpRequests: z.number().int().positive().default(400),
+  maxLlmCalls: z.number().int().positive().default(300),
   maxChapters: z.number().int().positive().default(40),
   maxChapterChars: z.number().int().positive().default(30000),
   maxDocuments: z.number().int().positive().default(6),
@@ -2401,7 +2406,14 @@ export const dochubAgentSchema = z.object({
   endpoint: z.string().optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).default(0),
-  maxOutputTokens: z.number().int().positive().default(900),
+  /** Russian text is ~3 characters per token: the 6000-character reduce needs ~2000. */
+  maxOutputTokens: z.number().int().positive().default(3000),
+  /**
+   * `false` sends `chat_template_kwargs.enable_thinking: false` (vLLM/SGLang
+   * Qwen) on custom endpoints: extraction does not need reasoning, and
+   * reasoning makes every call several times slower.
+   */
+  thinking: z.boolean().default(false),
 });
 
 export const dochubSearchSchema = z.object({

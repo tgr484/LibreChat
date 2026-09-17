@@ -4,14 +4,16 @@ import { Constants, EModelEndpoint } from 'librechat-data-provider';
 import type { AppConfig, IUser } from '@librechat/data-schemas';
 import type { ClientOptions } from '@librechat/agents';
 import type { EndpointDbMethods, ServerRequest } from '~/types';
+import type { DochubPhase, RunBudget } from './budget';
 import type { DochubAgentSettings } from './types';
-import type { RunBudget } from './budget';
 import { getProviderConfig } from '~/endpoints/config/providers';
 import { resolveRequestTenantId } from '~/middleware/tenant';
 import { resolveConfigHeaders } from '~/utils/headers';
 import { getModelMaxTokens } from '~/utils/tokens';
 import { omitTitleOptions } from '~/agents/client';
 import { createSafeUser } from '~/utils/env';
+import { stoppedError } from './budget';
+import { DochubError } from './errors';
 
 /** The agent that called the tool; its endpoint and model are the defaults. */
 export interface DochubLlmAgent {
@@ -25,7 +27,8 @@ export interface DochubLlm {
   model: string;
   /** Context window when the model is known to LibreChat; used to split big chapters. */
   contextTokens?: number;
-  invoke(prompt: string, budget: RunBudget): Promise<string>;
+  /** `work` calls stop when the work phase ends; `reduce` calls run into the reserve. */
+  invoke(prompt: string, budget: RunBudget, phase?: DochubPhase): Promise<string>;
 }
 
 /** A sub-agent answer is always plain text; some providers return content parts. */
@@ -47,13 +50,23 @@ export function extractText(content: unknown): string {
     .join('');
 }
 
-/** Reasoning models leak their thinking into `content`; it must not reach a summary. */
+/**
+ * Reasoning models leak their thinking into `content`; it must not reach a
+ * summary. An unclosed `<think>` means the answer was cut off mid-thought, and
+ * what is left is reasoning, not an answer.
+ */
 export function stripReasoning(text: string): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/^[\s\S]*?<\/think>/i, '')
+    .replace(/<think>[\s\S]*$/i, '')
     .trim();
 }
+
+const CUT_OFF_REASONING = /<think>(?![\s\S]*<\/think>)/i;
+
+/** Custom endpoints are the OpenAI-compatible gateways (vLLM, SGLang behind LiteLLM). */
+const KNOWN_ENDPOINTS: ReadonlySet<string> = new Set(Object.values(EModelEndpoint));
 
 type SubAgentOptions = ClientOptions & {
   maxTokens?: number;
@@ -154,6 +167,14 @@ export async function resolveDochubLlm(params: {
   if (!isGpt5Plus && !isOSeries) {
     clientOptions.temperature = settings.temperature;
   }
+  if (!settings.thinking && !KNOWN_ENDPOINTS.has(endpoint)) {
+    const kwargs = clientOptions.modelKwargs ?? {};
+    const template = (kwargs.chat_template_kwargs ?? {}) as Record<string, unknown>;
+    clientOptions.modelKwargs = {
+      ...kwargs,
+      chat_template_kwargs: { ...template, enable_thinking: false },
+    };
+  }
   if (options.configOptions) {
     clientOptions.configuration = options.configOptions;
   }
@@ -184,10 +205,39 @@ export async function resolveDochubLlm(params: {
       endpoint as EModelEndpoint,
       options.endpointTokenConfig,
     ),
-    invoke: async (prompt, budget) => {
-      budget.chargeLlm();
-      const response = await chat.invoke(prompt, { signal: budget.signal });
-      return stripReasoning(extractText(response?.content));
+    invoke: async (prompt, budget, phase = 'work') => {
+      const stop = phase === 'work' ? budget.workSignal : budget.signal;
+      if (stop.aborted) {
+        throw stoppedError(budget, `sub-agent ${phase} call`);
+      }
+      budget.chargeLlm(phase);
+      const timeout = AbortSignal.timeout(budget.limits.llmCallTimeoutMs);
+      let text: string;
+      try {
+        const response = await chat.invoke(prompt, { signal: AbortSignal.any([stop, timeout]) });
+        text = extractText(response?.content);
+      } catch (error) {
+        if (stop.aborted) {
+          throw stoppedError(budget, `sub-agent ${phase} call`);
+        }
+        if (timeout.aborted) {
+          throw new DochubError({
+            kind: 'timeout',
+            message: `sub-agent ${phase} call → no answer in ${budget.limits.llmCallTimeoutMs} ms`,
+            retryable: false,
+          });
+        }
+        throw error;
+      }
+      const answer = stripReasoning(text);
+      if (answer === '' && CUT_OFF_REASONING.test(text)) {
+        throw new DochubError({
+          kind: 'server',
+          message: `sub-agent ${phase} call → answer cut off inside reasoning`,
+          retryable: false,
+        });
+      }
+      return answer;
     },
   };
 }

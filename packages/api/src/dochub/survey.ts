@@ -34,6 +34,41 @@ export interface SurveyCollectionParams {
 
 /** With `summaries` a document still gets its most relevant parts, not just the summary. */
 const SUMMARY_DEPTH_CHAPTERS = 3;
+/** A document with less time than this is listed as skipped rather than started. */
+const MIN_DOCUMENT_MS = 20000;
+const minDocumentMs = (limits: DochubLimits): number =>
+  Math.min(MIN_DOCUMENT_MS, limits.wallClockMs / 20);
+
+/**
+ * Chapters one document may read: the depth's own cap, but never more than its
+ * fair share of the call's model budget (one call is kept for chapter selection).
+ */
+export function documentChapterCap(
+  depth: DochubSurveyDepth,
+  limits: DochubLimits,
+  documents: number,
+): number {
+  const depthCap =
+    depth === 'full' ? Math.max(1, Math.floor(limits.maxChapters / 2)) : SUMMARY_DEPTH_CHAPTERS;
+  const share = Math.floor(limits.maxLlmCalls / Math.max(1, documents)) - 1;
+  return Math.max(1, Math.min(depthCap, share));
+}
+
+/**
+ * Time for the document at `index`: what is left for work, split evenly over
+ * the waves of documents not yet started. A document that finishes early
+ * leaves its remainder to the later waves.
+ */
+export function documentSliceMs(params: {
+  workRemainingMs: number;
+  index: number;
+  total: number;
+  concurrency: number;
+}): number {
+  const width = Math.max(1, params.concurrency);
+  const waves = Math.ceil(params.total / width) - Math.floor(params.index / width);
+  return params.workRemainingMs / Math.max(1, waves);
+}
 
 const toRef = (collectionName: string, collectionId: number, hit: DochubSearchHit) => ({
   collectionId,
@@ -97,30 +132,41 @@ export async function surveyCollection(
     };
   }
 
-  const maxChapters =
-    params.depth === 'full'
-      ? Math.max(1, Math.floor(limits.maxChapters / 2))
-      : SUMMARY_DEPTH_CHAPTERS;
+  const maxChapters = documentChapterCap(params.depth, limits, chosen.length);
 
   const settled = await mapWithConcurrency(
     chosen,
     limits.documentConcurrency,
-    async (ref): Promise<DochubSurveyDocumentResult | null> => {
+    async (ref, index): Promise<DochubSurveyDocumentResult | null> => {
       const spent = budget.exhausted();
       if (budget.inReduceWindow() || spent.http || spent.llm || budget.signal.aborted) {
         return null;
       }
-      const result = await readDocument({
-        ref,
-        question: params.question,
-        scope: 'auto',
-        client: params.client,
-        llm: params.llm,
-        budget,
-        limits,
-        maxChapters,
+      const durationMs = documentSliceMs({
+        workRemainingMs: budget.workRemainingMs(),
+        index,
+        total: chosen.length,
+        concurrency: limits.documentConcurrency,
       });
-      return { ref, synthesis: result.synthesis, source: result.source, notes: result.notes };
+      if (durationMs < minDocumentMs(limits)) {
+        return null;
+      }
+      const slice = budget.slice({ durationMs, reserveMs: limits.reduceReserveMs });
+      try {
+        const result = await readDocument({
+          ref,
+          question: params.question,
+          scope: 'auto',
+          client: params.client,
+          llm: params.llm,
+          budget: slice,
+          limits,
+          maxChapters,
+        });
+        return { ref, synthesis: result.synthesis, source: result.source, notes: result.notes };
+      } finally {
+        slice.dispose();
+      }
     },
   );
 
@@ -136,7 +182,9 @@ export async function surveyCollection(
       if (reason instanceof DochubError && reason.kind === 'aborted') {
         throw reason;
       }
-      logger.warn(`[dochub] survey could not read document ${chosen[index].id}`, reason);
+      if (!(reason instanceof DochubError && reason.kind === 'budget')) {
+        logger.warn(`[dochub] survey could not read document ${chosen[index].id}`, reason);
+      }
     }
     skipped.push(chosen[index]);
   });
@@ -160,6 +208,7 @@ async function reduceSurvey(
         documents,
       }),
       params.budget,
+      'reduce',
     );
   } catch (error) {
     if (error instanceof DochubError && error.kind === 'aborted') {

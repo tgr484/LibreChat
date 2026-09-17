@@ -2,20 +2,46 @@ import type { DochubLimits } from './types';
 import { DochubError } from './errors';
 
 /**
+ * Two phases of one tool call. `work` is reading and extracting; `reduce` is
+ * condensing what was read. Work stops `reserveMs` before the deadline so the
+ * reduce steps always get their time, however long a single extraction takes.
+ */
+export type DochubPhase = 'work' | 'reduce';
+
+/**
+ * Reduce calls may go past `maxLlmCalls` by this much: a run that spent its
+ * counter on extraction must still be able to condense it (one reduce per
+ * survey document plus the survey's own).
+ */
+export const REDUCE_LLM_ALLOWANCE = 16;
+
+/**
  * Bounds one tool call. A research call may legitimately read a whole document,
  * so the limits are generous — but they must be finite, and hitting one has to
- * produce a partial answer rather than an error: `reduceReserveMs` is the time
- * kept aside so the sub-agent can still summarise what it managed to read.
+ * produce a partial answer rather than an error.
  */
 export interface RunBudget {
-  /** Aborts on the wall clock or when the caller's own signal aborts. */
+  readonly limits: DochubLimits;
+  /** Aborts at the deadline or when the caller's own signal aborts. */
   readonly signal: AbortSignal;
+  /** Aborts when the work phase ends; in-flight extractions stop with it. */
+  readonly workSignal: AbortSignal;
   chargeHttp(): void;
-  chargeLlm(): void;
+  chargeLlm(phase?: DochubPhase): void;
   remainingMs(): number;
+  /** Time left for work, i.e. before the reduce reserve starts. */
+  workRemainingMs(): number;
   /** True once only the reduce step should still be attempted. */
   inReduceWindow(): boolean;
   exhausted(): { http: boolean; llm: boolean; time: boolean };
+  /** `aborted` when the user stopped the run, `budget` when a limit did. */
+  stopKind(): 'aborted' | 'budget';
+  /**
+   * A share of this budget with its own, earlier deadline and reserve. Counters
+   * and notes stay shared; the slice always ends before this budget's reserve,
+   * so this budget's own reduce keeps its time.
+   */
+  slice(options: { durationMs: number; reserveMs: number }): RunBudget;
   /** Russian notice for the calling model; repeats are collapsed. */
   note(message: string): void;
   notes(): string[];
@@ -30,74 +56,139 @@ export interface RunBudgetOptions {
   now?: () => number;
 }
 
+interface SharedState {
+  limits: DochubLimits;
+  now: () => number;
+  startedAt: number;
+  parentSignal?: AbortSignal;
+  http: number;
+  llm: number;
+  notes: string[];
+}
+
 const budgetError = (message: string): DochubError =>
   new DochubError({ kind: 'budget', message, retryable: false });
 
-export function createRunBudget(options: RunBudgetOptions): RunBudget {
-  const { limits, parentSignal } = options;
-  const now = options.now ?? (() => Date.now());
-  const startedAt = now();
-
-  const controller = new AbortController();
-  const abortFromParent = () => controller.abort(parentSignal?.reason);
-  if (parentSignal?.aborted) {
-    abortFromParent();
+/** Aborts `controller` after `delayMs` or with `source`; returns the cleanup. */
+function linkAbort(
+  controller: AbortController,
+  delayMs: number,
+  source: AbortSignal | undefined,
+): () => void {
+  const abort = () => controller.abort(source?.reason);
+  if (source?.aborted) {
+    abort();
   } else {
-    parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    source?.addEventListener('abort', abort, { once: true });
   }
-
-  const timer = setTimeout(() => controller.abort(), limits.wallClockMs);
+  const timer = setTimeout(() => controller.abort(), Math.max(0, delayMs));
   /** Never keep the process alive for a budget timer. */
   timer.unref?.();
+  return () => {
+    clearTimeout(timer);
+    source?.removeEventListener('abort', abort);
+  };
+}
 
-  let httpCalls = 0;
-  let llmCalls = 0;
-  const collected: string[] = [];
+function createView(
+  shared: SharedState,
+  deadline: number,
+  reserveMs: number,
+  parent: AbortSignal | undefined,
+): RunBudget {
+  const { limits, now } = shared;
+  const remainingMs = () => Math.max(0, deadline - now());
+  const workRemainingMs = () => Math.max(0, deadline - reserveMs - now());
 
-  const elapsed = () => now() - startedAt;
-  const remainingMs = () => Math.max(0, limits.wallClockMs - elapsed());
+  const hard = new AbortController();
+  const work = new AbortController();
+  const cleanups = [
+    linkAbort(hard, remainingMs(), parent),
+    linkAbort(work, workRemainingMs(), hard.signal),
+  ];
+  const slices: RunBudget[] = [];
 
   const note = (message: string) => {
-    if (!collected.includes(message)) {
-      collected.push(message);
+    if (!shared.notes.includes(message)) {
+      shared.notes.push(message);
     }
   };
 
   return {
-    signal: controller.signal,
+    limits,
+    signal: hard.signal,
+    workSignal: work.signal,
     remainingMs,
-    inReduceWindow: () => remainingMs() <= limits.reduceReserveMs,
+    workRemainingMs,
+    inReduceWindow: () => workRemainingMs() <= 0,
     exhausted: () => ({
-      http: httpCalls >= limits.maxHttpRequests,
-      llm: llmCalls >= limits.maxLlmCalls,
+      http: shared.http >= limits.maxHttpRequests,
+      llm: shared.llm >= limits.maxLlmCalls,
       time: remainingMs() <= 0,
     }),
+    stopKind: () => (shared.parentSignal?.aborted ? 'aborted' : 'budget'),
     chargeHttp: () => {
-      if (httpCalls >= limits.maxHttpRequests) {
+      if (shared.http >= limits.maxHttpRequests) {
         note(
           `⚠ Исчерпан лимит обращений к DocHub за один вызов (${limits.maxHttpRequests}). Результат неполный.`,
         );
         throw budgetError(`DocHub HTTP budget exhausted (${limits.maxHttpRequests})`);
       }
-      httpCalls += 1;
+      shared.http += 1;
     },
-    chargeLlm: () => {
-      if (llmCalls >= limits.maxLlmCalls) {
+    chargeLlm: (phase: DochubPhase = 'work') => {
+      const cap =
+        phase === 'reduce' ? limits.maxLlmCalls + REDUCE_LLM_ALLOWANCE : limits.maxLlmCalls;
+      if (shared.llm >= cap) {
         note(
           `⚠ Исчерпан лимит разборов текста за один вызов (${limits.maxLlmCalls}). Результат неполный.`,
         );
         throw budgetError(`DocHub LLM budget exhausted (${limits.maxLlmCalls})`);
       }
-      llmCalls += 1;
+      shared.llm += 1;
+    },
+    slice: (options) => {
+      const start = now();
+      const end = Math.min(start + Math.max(0, options.durationMs), deadline - reserveMs);
+      const reserve = Math.min(options.reserveMs, Math.max(0, (end - start) / 2));
+      const child = createView(shared, end, reserve, hard.signal);
+      slices.push(child);
+      return child;
     },
     note,
-    notes: () => [...collected],
-    spent: () => ({ http: httpCalls, llm: llmCalls, elapsedMs: elapsed() }),
+    notes: () => [...shared.notes],
+    spent: () => ({ http: shared.http, llm: shared.llm, elapsedMs: now() - shared.startedAt }),
     dispose: () => {
-      clearTimeout(timer);
-      parentSignal?.removeEventListener('abort', abortFromParent);
+      slices.forEach((child) => child.dispose());
+      cleanups.forEach((cleanup) => cleanup());
     },
   };
+}
+
+export function createRunBudget(options: RunBudgetOptions): RunBudget {
+  const now = options.now ?? (() => Date.now());
+  const shared: SharedState = {
+    limits: options.limits,
+    now,
+    startedAt: now(),
+    parentSignal: options.parentSignal,
+    http: 0,
+    llm: 0,
+    notes: [],
+  };
+  return createView(
+    shared,
+    shared.startedAt + options.limits.wallClockMs,
+    Math.min(options.limits.reduceReserveMs, options.limits.wallClockMs),
+    options.parentSignal,
+  );
+}
+
+/** Turns an abort of `signal` into the `DochubError` the callers branch on. */
+export function stoppedError(budget: RunBudget, what: string): DochubError {
+  return budget.stopKind() === 'aborted'
+    ? new DochubError({ kind: 'aborted', message: `${what} → aborted`, retryable: false })
+    : budgetError(`${what} → stopped by the run budget`);
 }
 
 /**

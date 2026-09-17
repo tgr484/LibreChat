@@ -1,9 +1,10 @@
 import type { DochubLimits } from './types';
-import { createRunBudget, mapWithConcurrency } from './budget';
+import { REDUCE_LLM_ALLOWANCE, createRunBudget, mapWithConcurrency, stoppedError } from './budget';
 
 const limits = (overrides: Partial<DochubLimits> = {}): DochubLimits => ({
   wallClockMs: 600000,
   reduceReserveMs: 45000,
+  llmCallTimeoutMs: 60000,
   maxHttpRequests: 150,
   maxLlmCalls: 80,
   maxChapters: 40,
@@ -99,6 +100,101 @@ describe('createRunBudget', () => {
     expect(budget.signal.aborted).toBe(false);
     jest.advanceTimersByTime(1001);
     expect(budget.signal.aborted).toBe(true);
+
+    budget.dispose();
+    jest.useRealTimers();
+  });
+
+  /** In-flight extractions stop at the reserve, so the reduce keeps its time. */
+  it('ends the work phase before the deadline', () => {
+    jest.useFakeTimers();
+    const budget = createRunBudget({
+      limits: limits({ wallClockMs: 1000, reduceReserveMs: 300 }),
+    });
+
+    jest.advanceTimersByTime(701);
+    expect(budget.workSignal.aborted).toBe(true);
+    expect(budget.signal.aborted).toBe(false);
+    jest.advanceTimersByTime(300);
+    expect(budget.signal.aborted).toBe(true);
+
+    budget.dispose();
+    jest.useRealTimers();
+  });
+
+  it('tells a budget stop from a user stop', () => {
+    const controller = new AbortController();
+    const budget = createRunBudget({ limits: limits(), parentSignal: controller.signal });
+
+    expect(stoppedError(budget, 'call').kind).toBe('budget');
+    controller.abort();
+    expect(budget.workSignal.aborted).toBe(true);
+    expect(stoppedError(budget, 'call').kind).toBe('aborted');
+    budget.dispose();
+  });
+
+  it('lets reduce calls past the work cap, up to the allowance', () => {
+    const budget = createRunBudget({ limits: limits({ maxLlmCalls: 1 }) });
+
+    budget.chargeLlm();
+    expect(() => budget.chargeLlm()).toThrow(/LLM budget/);
+    for (let call = 0; call < REDUCE_LLM_ALLOWANCE; call += 1) {
+      budget.chargeLlm('reduce');
+    }
+    expect(() => budget.chargeLlm('reduce')).toThrow(/LLM budget/);
+    budget.dispose();
+  });
+});
+
+describe('RunBudget.slice', () => {
+  it('shares the counters and notes with its parent', () => {
+    const budget = createRunBudget({ limits: limits({ maxHttpRequests: 2 }) });
+    const slice = budget.slice({ durationMs: 10000, reserveMs: 1000 });
+
+    slice.chargeHttp();
+    budget.chargeHttp();
+    expect(() => slice.chargeHttp()).toThrow(/HTTP budget/);
+    expect(budget.notes()).toEqual(slice.notes());
+    expect(budget.spent().http).toBe(2);
+    budget.dispose();
+  });
+
+  it('ends before the parent reserve and keeps its own', () => {
+    let clock = 0;
+    const budget = createRunBudget({
+      limits: limits({ wallClockMs: 60000, reduceReserveMs: 10000 }),
+      now: () => clock,
+    });
+
+    const long = budget.slice({ durationMs: 120000, reserveMs: 5000 });
+    expect(long.remainingMs()).toBe(50000);
+    expect(long.workRemainingMs()).toBe(45000);
+
+    const short = budget.slice({ durationMs: 4000, reserveMs: 5000 });
+    /** The reserve never exceeds half of a short slice. */
+    expect(short.workRemainingMs()).toBe(2000);
+
+    clock = 46000;
+    expect(long.inReduceWindow()).toBe(true);
+    expect(budget.inReduceWindow()).toBe(false);
+    budget.dispose();
+  });
+
+  it('stops with its parent and on its own clock', () => {
+    jest.useFakeTimers();
+    const controller = new AbortController();
+    const budget = createRunBudget({ limits: limits(), parentSignal: controller.signal });
+    const first = budget.slice({ durationMs: 1000, reserveMs: 200 });
+    const second = budget.slice({ durationMs: 60000, reserveMs: 200 });
+
+    jest.advanceTimersByTime(1001);
+    expect(first.signal.aborted).toBe(true);
+    expect(second.signal.aborted).toBe(false);
+    expect(budget.signal.aborted).toBe(false);
+
+    controller.abort();
+    expect(second.signal.aborted).toBe(true);
+    expect(second.stopKind()).toBe('aborted');
 
     budget.dispose();
     jest.useRealTimers();

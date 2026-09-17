@@ -99,10 +99,13 @@ async function planChapters(
     );
     chosen = parseSelection(answer, chapters.length, cap);
   } catch (error) {
-    if (isKind(error, 'aborted') || isKind(error, 'budget')) {
+    if (isKind(error, 'aborted')) {
       throw error;
     }
-    logger.warn(`[dochub] chapter selection failed for document ${params.ref.id}`, error);
+    /** Out of time or calls for the selection: headings still give a usable plan. */
+    if (!isKind(error, 'budget')) {
+      logger.warn(`[dochub] chapter selection failed for document ${params.ref.id}`, error);
+    }
   }
 
   const plan = new Set<number>([0, ...chosen]);
@@ -210,6 +213,7 @@ async function readChapters(
           mismatch = true;
           return null;
         }
+        /** A budget stop is not a failed chapter: the coverage note reports it. */
         if (isKind(error, 'aborted') || isKind(error, 'budget') || isKind(error, 'not_found')) {
           throw error;
         }
@@ -255,6 +259,7 @@ async function readSummary(params: ReadDocumentParams, notes: string[]): Promise
       summary: summary.summary,
     }),
     params.budget,
+    'reduce',
   );
   const synthesis = isNoData(answer)
     ? `В выжимке документа №${ref.seq} нет сведений по вопросу.`
@@ -300,6 +305,7 @@ async function reduce(
         findings: useful,
       }),
       params.budget,
+      'reduce',
     );
   } catch (error) {
     if (isKind(error, 'aborted')) {

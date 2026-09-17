@@ -15,6 +15,7 @@ import type {
 import type { RunBudget } from './budget';
 import { DochubError, errorFromResponse, mapDochubError } from './errors';
 import { signDochubToken } from './token';
+import { stoppedError } from './budget';
 
 export interface DochubClient {
   listCollections(): Promise<DochubCollectionsResponse>;
@@ -135,11 +136,17 @@ export function createDochubClient(params: DochubClientParams): DochubClient {
         payload = response.data;
         headers = response.headers;
       } catch (error) {
-        const mapped = mapDochubError(error, options.route);
+        const transport = mapDochubError(error, options.route);
+        const mapped =
+          transport.kind === 'aborted' ? stoppedError(budget, options.route) : transport;
         logger.warn(
           `[dochub] sub=${subject.sub} route=${options.route} transport=${mapped.kind} jti=${jti.slice(0, 8)} ms=${Date.now() - startedAt}`,
         );
-        if (mapped.kind === 'aborted' || serverAttempts >= SERVER_DELAYS_MS.length) {
+        if (
+          mapped.kind === 'aborted' ||
+          mapped.kind === 'budget' ||
+          serverAttempts >= SERVER_DELAYS_MS.length
+        ) {
           throw mapped;
         }
         await wait(SERVER_DELAYS_MS[serverAttempts]);

@@ -1259,13 +1259,16 @@ endpoints:
 #     # endpoint: "RNT"
 #     # model: "current_model"
 #     temperature: 0
-#     maxOutputTokens: 900
+#     maxOutputTokens: 3000
+#     # false sends chat_template_kwargs.enable_thinking=false on custom endpoints (vLLM/SGLang Qwen)
+#     thinking: false
 #   # (optional) Budget of one tool call
 #   limits:
-#     wallClockMs: 600000       # whole call; a partial answer is returned on expiry
-#     reduceReserveMs: 45000    # time kept for the final summary
-#     maxHttpRequests: 150      # DocHub allows 120 requests per minute per user
-#     maxLlmCalls: 80
+#     wallClockMs: 1800000      # safety ceiling of a whole call; a partial answer is returned on expiry
+#     reduceReserveMs: 90000    # time kept for the summaries; reading stops this much earlier
+#     llmCallTimeoutMs: 240000  # one request to the model
+#     maxHttpRequests: 400      # DocHub allows 120 requests per minute per user
+#     maxLlmCalls: 300
 #     maxChapters: 40           # parts of one document read by dochub_read
 #     maxDocuments: 6           # documents read by dochub_survey
 #     chapterConcurrency: 4

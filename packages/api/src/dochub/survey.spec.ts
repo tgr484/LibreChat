@@ -7,15 +7,21 @@ import type {
 } from './types';
 import type { DochubClient } from './client';
 import type { DochubLlm } from './llm';
-import { formatSurveyResult, surveyCollection } from './survey';
+import {
+  documentChapterCap,
+  documentSliceMs,
+  formatSurveyResult,
+  surveyCollection,
+} from './survey';
+import { createRunBudget, stoppedError } from './budget';
 import { createDochubCatalog } from './catalog';
-import { createRunBudget } from './budget';
 import { DochubError } from './errors';
 import { NO_DATA } from './prompts';
 
 const limits = (overrides: Partial<DochubLimits> = {}): DochubLimits => ({
   wallClockMs: 600000,
   reduceReserveMs: 1000,
+  llmCallTimeoutMs: 60000,
   maxHttpRequests: 150,
   maxLlmCalls: 80,
   maxChapters: 40,
@@ -46,6 +52,7 @@ function setup(options: {
   degraded?: boolean;
   chapters?: number;
   failOutline?: number;
+  hangOn?: string;
 }) {
   const calls = { search: [] as number[], outline: [] as number[], summary: [] as number[] };
   const client = {
@@ -84,7 +91,7 @@ function setup(options: {
       page_to: selection.chapter + 1,
       chars: 20,
       truncated: false,
-      text: `турбодетандер в документе ${id}`,
+      text: `${selection.chapter === 0 ? 'турбодетандер' : 'медленно'} в документе ${id}`,
     }),
     getSummary: async (_collection: number, id: number) => {
       calls.summary.push(id);
@@ -101,9 +108,13 @@ function setup(options: {
   const prompts: string[] = [];
   const llm: DochubLlm = {
     model: 'stub',
-    invoke: async (prompt, budget) => {
-      budget.chargeLlm();
+    invoke: async (prompt, budget, phase) => {
+      budget.chargeLlm(phase);
       prompts.push(prompt);
+      if (options.hangOn != null && prompt.includes(options.hangOn)) {
+        await new Promise((resolve) => budget.workSignal.addEventListener('abort', resolve));
+        throw stoppedError(budget, 'stub');
+      }
       if (prompt.includes('--- РАЗБОРЫ ---')) {
         return 'ОБЩАЯ СВОДКА';
       }
@@ -239,6 +250,46 @@ describe('surveyCollection', () => {
     budget.dispose();
 
     expect(catalog.isInCollection(7, 105)).toBe(true);
+  });
+});
+
+describe('surveyCollection — sharing the time', () => {
+  /** A real run read two issues out of eight and ran out of time for the rest. */
+  it('gives every document a share even when extractions hang', async () => {
+    const env = setup({
+      hits: [hit(1), hit(2), hit(3), hit(4)],
+      chapters: 2,
+      hangOn: 'медленно',
+    });
+
+    const result = await survey(env, {
+      maxDocuments: 4,
+      depth: 'full',
+      limits: limits({
+        wallClockMs: 2400,
+        reduceReserveMs: 300,
+        documentConcurrency: 2,
+        chapterConcurrency: 2,
+      }),
+    });
+
+    expect(result.documents.map((document) => document.ref.seq).sort()).toEqual([1, 2, 3, 4]);
+    expect(result.skipped).toEqual([]);
+    expect(result.synthesis).toBe('ОБЩАЯ СВОДКА');
+  });
+
+  it('splits the work time over the waves not yet started', () => {
+    const slice = (index: number) =>
+      documentSliceMs({ workRemainingMs: 900, index, total: 8, concurrency: 3 });
+    expect([0, 2, 3, 5, 6, 7].map(slice)).toEqual([300, 300, 450, 450, 900, 900]);
+  });
+
+  it('caps the parts per document by its share of the model calls', () => {
+    const base = limits({ maxLlmCalls: 80, maxChapters: 40 });
+    expect(documentChapterCap('full', base, 8)).toBe(9);
+    expect(documentChapterCap('full', base, 2)).toBe(20);
+    expect(documentChapterCap('summaries', base, 2)).toBe(3);
+    expect(documentChapterCap('full', limits({ maxLlmCalls: 3 }), 12)).toBe(1);
   });
 });
 

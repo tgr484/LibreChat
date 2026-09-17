@@ -9,13 +9,14 @@ import type {
 import type { DochubClient } from './client';
 import type { DochubLlm } from './llm';
 import { formatReadResult, keywordRanking, readDocument } from './reader';
-import { createRunBudget } from './budget';
+import { createRunBudget, stoppedError } from './budget';
 import { DochubError } from './errors';
 import { NO_DATA } from './prompts';
 
 const limits = (overrides: Partial<DochubLimits> = {}): DochubLimits => ({
   wallClockMs: 600000,
   reduceReserveMs: 1000,
+  llmCallTimeoutMs: 60000,
   maxHttpRequests: 150,
   maxLlmCalls: 80,
   maxChapters: 40,
@@ -108,13 +109,17 @@ const content = (index: number, text: string, version = 'v1'): DochubContent => 
  * A deterministic stand-in for the model: extraction echoes the relevant line
  * of the fragment, selection and reduce answer from what the prompt carries.
  */
-function stubLlm(options: { selection?: string; failReduce?: boolean } = {}) {
+function stubLlm(options: { selection?: string; failReduce?: boolean; hangOn?: string } = {}) {
   const prompts: string[] = [];
   const llm: DochubLlm = {
     model: 'stub',
-    invoke: async (prompt, budget) => {
-      budget.chargeLlm();
+    invoke: async (prompt, budget, phase) => {
+      budget.chargeLlm(phase);
       prompts.push(prompt);
+      if (options.hangOn != null && prompt.includes(options.hangOn)) {
+        await new Promise((resolve) => budget.workSignal.addEventListener('abort', resolve));
+        throw stoppedError(budget, 'stub');
+      }
       if (prompt.includes('Верни ТОЛЬКО номера частей')) {
         return options.selection ?? '';
       }
@@ -279,7 +284,7 @@ describe('readDocument — long documents', () => {
 });
 
 describe('readDocument — budget', () => {
-  it('stops launching chapters when the LLM budget is spent and still answers', async () => {
+  it('stops launching chapters when the LLM budget is spent and still reduces', async () => {
     const chapters = Array.from({ length: 10 }, (_, index) => chapter(index));
     const { promise } = run(
       {
@@ -292,7 +297,8 @@ describe('readDocument — budget', () => {
     const result = await promise;
     expect(result.chaptersRead).toBeLessThan(10);
     expect(result.notes.join(' ')).toContain('Прочитано');
-    expect(result.notes.join(' ')).toContain('Исчерпан лимит разборов');
+    /** The reduce has its own allowance past the counter. */
+    expect(result.synthesis).toMatch(/^СВОДКА/);
   });
 
   it('keeps the reduce step when the time runs out', async () => {
@@ -310,6 +316,65 @@ describe('readDocument — budget', () => {
     expect(result.chaptersRead).toBe(0);
     expect(result.notes.join(' ')).toContain('Прочитано 0 из 5');
     expect(prompts).toHaveLength(0);
+  });
+});
+
+describe('readDocument — work phase', () => {
+  /** The logs of a real run: a slow extraction used to take the reduce down with it. */
+  it('cuts a slow extraction at the end of the work phase and still reduces', async () => {
+    const budget = createRunBudget({
+      limits: limits({ wallClockMs: 600, reduceReserveMs: 300, chapterConcurrency: 2 }),
+    });
+    const { client } = stubClient({
+      outline: outline([chapter(0), chapter(1)]),
+      content: (index) => content(index, index === 0 ? 'турбодетандер испытан' : 'медленная часть'),
+    });
+    const { llm, prompts } = stubLlm({ hangOn: 'медленная часть' });
+
+    const result = await readDocument({
+      ref: ref(),
+      question: 'турбодетандер?',
+      scope: 'auto',
+      client,
+      llm,
+      budget,
+      limits: budget.limits,
+    });
+    budget.dispose();
+
+    expect(result.chaptersRead).toBe(1);
+    expect(result.synthesis).toMatch(/^СВОДКА/);
+    expect(result.findings.map((finding) => finding.chapterIndex)).toEqual([0]);
+    expect(result.notes.join(' ')).toContain('Прочитано 1 из 2');
+    expect(result.notes.join(' ')).not.toContain('прочитать не удалось');
+    expect(prompts.some((prompt) => prompt.includes('--- ВЫПИСКИ ---'))).toBe(true);
+  });
+
+  it('falls back to the headings when the selection call is out of budget', async () => {
+    const chapters = Array.from({ length: 5 }, (_, index) =>
+      chapter(index, index === 3 ? 'Турбодетандер' : `Глава ${index}`),
+    );
+    const budget = createRunBudget({ limits: limits({ maxLlmCalls: 0 }) });
+    const { client, calls } = stubClient({
+      outline: outline(chapters),
+      content: (index) => content(index, 'турбодетандер'),
+    });
+
+    const result = await readDocument({
+      ref: ref(),
+      question: 'турбодетандер',
+      scope: 'auto',
+      client,
+      llm: stubLlm().llm,
+      budget,
+      limits: budget.limits,
+      maxChapters: 2,
+    });
+    budget.dispose();
+
+    expect(result.ref.id).toBe(103);
+    expect(calls.content).toEqual([]);
+    expect(result.notes.join(' ')).toContain('не читались части: 1, 2, 4');
   });
 });
 

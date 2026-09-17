@@ -16,6 +16,7 @@ const runtime: DochubRuntimeConfig = {
   limits: {
     wallClockMs: 600000,
     reduceReserveMs: 45000,
+    llmCallTimeoutMs: 60000,
     maxHttpRequests: 150,
     maxLlmCalls: 80,
     maxChapters: 40,
@@ -26,7 +27,7 @@ const runtime: DochubRuntimeConfig = {
     extractionCharLimit: 1200,
     resultCharLimit: 6000,
   },
-  agent: { temperature: 0, maxOutputTokens: 900 },
+  agent: { temperature: 0, maxOutputTokens: 900, thinking: false },
   search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 4000 },
 };
 

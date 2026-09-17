@@ -16,6 +16,7 @@ let server: Server;
 let baseURL: string;
 let received: Array<Record<string, unknown>> = [];
 let reply = 'ответ';
+let delayMs = 0;
 
 beforeAll(async () => {
   server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -27,19 +28,25 @@ beforeAll(async () => {
         authorization: req.headers.authorization,
         ...JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
       });
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          id: 'chatcmpl-1',
-          object: 'chat.completion',
-          created: 0,
-          model: 'qwen3.6-27B-flash',
-          choices: [
-            { index: 0, finish_reason: 'stop', message: { role: 'assistant', content: reply } },
-          ],
-          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-        }),
-      );
+      const respond = () => {
+        if (res.destroyed) {
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            id: 'chatcmpl-1',
+            object: 'chat.completion',
+            created: 0,
+            model: 'qwen3.6-27B-flash',
+            choices: [
+              { index: 0, finish_reason: 'stop', message: { role: 'assistant', content: reply } },
+            ],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }),
+        );
+      };
+      setTimeout(respond, delayMs);
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -53,11 +60,13 @@ afterAll(async () => {
 beforeEach(() => {
   received = [];
   reply = 'ответ';
+  delayMs = 0;
 });
 
 const limits: DochubLimits = {
   wallClockMs: 60000,
   reduceReserveMs: 1000,
+  llmCallTimeoutMs: 60000,
   maxHttpRequests: 10,
   maxLlmCalls: 2,
   maxChapters: 40,
@@ -100,7 +109,7 @@ describe('resolveDochubLlm', () => {
     const llm = await resolveDochubLlm({
       req: request(),
       agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
-      settings: { temperature: 0, maxOutputTokens: 900 },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: true },
       db,
     });
     const budget = createRunBudget({ limits });
@@ -128,7 +137,7 @@ describe('resolveDochubLlm', () => {
         model: 'stale-model',
         model_parameters: { model: 'qwen3.6-27B-flash' },
       },
-      settings: { temperature: 0, maxOutputTokens: 900 },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: true },
       db,
     });
     expect(llm.model).toBe('qwen3.6-27B-flash');
@@ -138,7 +147,7 @@ describe('resolveDochubLlm', () => {
     const llm = await resolveDochubLlm({
       req: request(),
       agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
-      settings: { model: 'qwen-small', temperature: 0.2, maxOutputTokens: 500 },
+      settings: { model: 'qwen-small', temperature: 0.2, maxOutputTokens: 500, thinking: true },
       db,
     });
     const budget = createRunBudget({ limits });
@@ -153,7 +162,7 @@ describe('resolveDochubLlm', () => {
     const llm = await resolveDochubLlm({
       req: request(),
       agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
-      settings: { temperature: 0, maxOutputTokens: 900 },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: true },
       db,
     });
     const budget = createRunBudget({ limits });
@@ -166,7 +175,7 @@ describe('resolveDochubLlm', () => {
     const llm = await resolveDochubLlm({
       req: request(),
       agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
-      settings: { temperature: 0, maxOutputTokens: 900 },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: true },
       db,
     });
     const budget = createRunBudget({ limits });
@@ -176,5 +185,96 @@ describe('resolveDochubLlm', () => {
     await expect(llm.invoke('3', budget)).rejects.toMatchObject({ kind: 'budget' });
     expect(received).toHaveLength(2);
     budget.dispose();
+  });
+
+  it('switches reasoning off on a custom endpoint unless configured', async () => {
+    const quiet = await resolveDochubLlm({
+      req: request(),
+      agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: false },
+      db,
+    });
+    const thinking = await resolveDochubLlm({
+      req: request(),
+      agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: true },
+      db,
+    });
+    const budget = createRunBudget({ limits: { ...limits, maxLlmCalls: 5 } });
+
+    await quiet.invoke('1', budget);
+    await thinking.invoke('2', budget);
+    budget.dispose();
+
+    expect(received[0].chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(received[1].chat_template_kwargs).toBeUndefined();
+  });
+
+  it('rejects an answer cut off inside its reasoning', async () => {
+    reply = '<think>долго думаю и не успеваю';
+    const llm = await resolveDochubLlm({
+      req: request(),
+      agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
+      settings: { temperature: 0, maxOutputTokens: 900, thinking: true },
+      db,
+    });
+    const budget = createRunBudget({ limits });
+
+    await expect(llm.invoke('Вопрос', budget)).rejects.toMatchObject({ kind: 'server' });
+    budget.dispose();
+  });
+
+  describe('stopping a call', () => {
+    const slowLlm = () =>
+      resolveDochubLlm({
+        req: request(),
+        agent: { provider: 'RNT', model: 'qwen3.6-27B-flash' },
+        settings: { temperature: 0, maxOutputTokens: 900, thinking: false },
+        db,
+      });
+
+    /** The extraction in flight ends with the work phase; the reduce still runs. */
+    it('stops a work call when the work phase ends and lets the reduce through', async () => {
+      const llm = await slowLlm();
+      const budget = createRunBudget({
+        limits: { ...limits, maxLlmCalls: 5, wallClockMs: 3000, reduceReserveMs: 2800 },
+      });
+
+      delayMs = 1000;
+      const startedAt = Date.now();
+      await expect(llm.invoke('выписка', budget, 'work')).rejects.toMatchObject({
+        kind: 'budget',
+      });
+      expect(Date.now() - startedAt).toBeLessThan(900);
+
+      delayMs = 100;
+      await expect(llm.invoke('сведение', budget, 'reduce')).resolves.toBe('ответ');
+      await expect(llm.invoke('ещё выписка', budget, 'work')).rejects.toMatchObject({
+        kind: 'budget',
+      });
+      budget.dispose();
+    });
+
+    it('gives up on one hung request without spending the whole call', async () => {
+      const llm = await slowLlm();
+      const budget = createRunBudget({ limits: { ...limits, llmCallTimeoutMs: 150 } });
+
+      delayMs = 1000;
+      await expect(llm.invoke('выписка', budget)).rejects.toMatchObject({ kind: 'timeout' });
+      expect(budget.signal.aborted).toBe(false);
+      budget.dispose();
+    });
+
+    it('reports a user stop as aborted', async () => {
+      const llm = await slowLlm();
+      const controller = new AbortController();
+      const budget = createRunBudget({ limits, parentSignal: controller.signal });
+
+      delayMs = 1000;
+      const pending = llm.invoke('выписка', budget);
+      setTimeout(() => controller.abort(), 50);
+      await expect(pending).rejects.toMatchObject({ kind: 'aborted' });
+      budget.dispose();
+    });
   });
 });
