@@ -350,3 +350,54 @@ describe('parsePages', () => {
     expect(parsePages('с. 12')).toBeUndefined();
   });
 });
+
+describe('dochub_survey', () => {
+  beforeEach(() => {
+    routes['GET /api/integration/v1/documents/103/outline'] = () => ({
+      status: 200,
+      body: {
+        document_id: 103,
+        title: 'Испытания турбодетандера',
+        content_version: 'v1',
+        chapters: [{ index: 0, heading: null, chars: 40, page_from: 5, page_to: 5 }],
+      },
+    });
+    routes['GET /api/integration/v1/documents/103/content'] = () => ({
+      status: 200,
+      body: {
+        document_id: 103,
+        content_version: 'v1',
+        chapter: 0,
+        page_from: 5,
+        page_to: 5,
+        chars: 40,
+        truncated: false,
+        text: '<!-- page: 5 -->\nтурбодетандер',
+      },
+    });
+    routes['GET /api/integration/v1/collections/7/documents/111/summary'] = () => ({
+      status: 200,
+      body: {
+        id: 111,
+        title: 'Закрытый отчёт',
+        summary: 'турбодетандер упомянут',
+        truncated: false,
+        can_open: false,
+      },
+    });
+  });
+
+  it('surveys the collection with one search and never opens a closed text', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_survey').invoke({
+      collection: 'Нефтяное хозяйство 2018',
+      question: 'Что известно про турбодетандер?',
+    });
+
+    expect(requests.filter((request) => request.endsWith('/search'))).toHaveLength(1);
+    expect(requests).not.toContain('GET /api/integration/v1/documents/111/outline');
+    expect(requests).toContain('GET /api/integration/v1/collections/7/documents/111/summary');
+    expect(result).toContain('Разобрано документов: 2.');
+    expect(result).toContain('№11 «Закрытый отчёт» (только выжимка, полный текст недоступен)');
+    expect(result).toContain('Поиск выполнен без разбора запроса');
+  });
+});

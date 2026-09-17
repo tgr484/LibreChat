@@ -11,6 +11,7 @@ import type { DochubCatalog, DochubCatalogStore, DochubCollectionResolution } fr
 import type { DochubDocumentResolution } from './catalog';
 import type { DochubLlm, DochubLlmAgent } from './llm';
 import type { DochubResolvedConfig } from './config';
+import type { DochubSurveyDepth } from './survey';
 import type { EndpointDbMethods } from '~/types';
 import type { DochubReadScope } from './reader';
 import type { ServerRequest } from '~/types';
@@ -18,6 +19,7 @@ import type { DochubClient } from './client';
 import type { RunBudget } from './budget';
 import { createDochubCatalog, createDochubCatalogStore } from './catalog';
 import { isDochubConfigured, resolveDochubConfig } from './config';
+import { formatSurveyResult, surveyCollection } from './survey';
 import { formatReadResult, readDocument } from './reader';
 import { DochubError, describeForModel } from './errors';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
@@ -35,8 +37,8 @@ const NO_IDENTITY_MESSAGE =
   'Учётная запись пользователя не сопоставлена с логином DocHub — нужен администратор. Сообщи об этом пользователю и не повторяй вызов.';
 const NO_LLM_MESSAGE =
   'Не удалось подключить модель для чтения документов DocHub. Сообщи пользователю, что глубокое чтение сейчас недоступно, и опирайся на dochub_search.';
-const NOT_IMPLEMENTED_MESSAGE =
-  'Этот инструмент ещё не включён в текущей сборке. Используй dochub_search и расскажи пользователю, что глубокое чтение документов пока недоступно.';
+/** The schema allows 12; the config cannot raise it past that. */
+const SURVEY_MAX_DOCUMENTS = 12;
 
 interface ToolContext {
   client: DochubClient;
@@ -349,11 +351,49 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
     },
   );
 
-  const survey = tool(async () => NOT_IMPLEMENTED_MESSAGE, {
-    name: dochubToolkit.dochub_survey.name,
-    description: dochubToolkit.dochub_survey.description,
-    schema: dochubToolkit.dochub_survey.schema,
-  });
+  const survey = tool(
+    async ({
+      collection,
+      question,
+      max_documents: maxDocuments,
+      depth,
+    }: {
+      collection: string;
+      question: string;
+      max_documents?: number;
+      depth?: DochubSurveyDepth;
+    }) =>
+      withContext({ req, signal, toolName: 'dochub_survey' }, async (context) => {
+        const resolved = await context.catalog.resolveCollection(collection);
+        if (!resolved.ok) {
+          return describeCollectionMiss(resolved);
+        }
+        const llm = await loadLlm(context.config.runtime.agent);
+        if (!llm) {
+          return NO_LLM_MESSAGE;
+        }
+        const { limits, search } = context.config.runtime;
+        const result = await surveyCollection({
+          collectionId: resolved.id,
+          collectionName: resolved.name,
+          question,
+          maxDocuments: Math.min(maxDocuments ?? limits.maxDocuments, SURVEY_MAX_DOCUMENTS),
+          depth: depth ?? 'summaries',
+          client: context.client,
+          catalog: context.catalog,
+          llm,
+          budget: context.budget,
+          limits,
+          search,
+        });
+        return formatSurveyResult(result, context.budget.notes(), limits.resultCharLimit);
+      }),
+    {
+      name: dochubToolkit.dochub_survey.name,
+      description: dochubToolkit.dochub_survey.description,
+      schema: dochubToolkit.dochub_survey.schema,
+    },
+  );
 
   return [collections, search, read, survey] as DynamicStructuredTool[];
 }

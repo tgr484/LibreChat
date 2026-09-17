@@ -8,4 +8,5 @@ export * from './catalog';
 export * from './llm';
 export * from './prompts';
 export * from './reader';
+export * from './survey';
 export * from './tools';
