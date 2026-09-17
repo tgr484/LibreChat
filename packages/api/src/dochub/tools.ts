@@ -1,19 +1,30 @@
 import { logger } from '@librechat/data-schemas';
 import { tool } from '@librechat/agents/langchain/tools';
 import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
-import type { DochubCollectionSummary, DochubDocumentRef, DochubSearchResponse } from './types';
+import type {
+  DochubAgentSettings,
+  DochubCollectionSummary,
+  DochubDocumentRef,
+  DochubSearchResponse,
+} from './types';
 import type { DochubCatalog, DochubCatalogStore, DochubCollectionResolution } from './catalog';
+import type { DochubDocumentResolution } from './catalog';
+import type { DochubLlm, DochubLlmAgent } from './llm';
 import type { DochubResolvedConfig } from './config';
+import type { EndpointDbMethods } from '~/types';
+import type { DochubReadScope } from './reader';
 import type { ServerRequest } from '~/types';
 import type { DochubClient } from './client';
 import type { RunBudget } from './budget';
 import { createDochubCatalog, createDochubCatalogStore } from './catalog';
 import { isDochubConfigured, resolveDochubConfig } from './config';
+import { formatReadResult, readDocument } from './reader';
 import { DochubError, describeForModel } from './errors';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
 import { resolveDochubSubject } from './token';
 import { createDochubClient } from './client';
 import { createRunBudget } from './budget';
+import { resolveDochubLlm } from './llm';
 
 /** One catalog per chat turn: several tool calls must not re-list the collections. */
 const CATALOG_STORE = Symbol.for('librechat.dochub.catalog');
@@ -22,6 +33,8 @@ const NOT_LDAP_MESSAGE =
   'Интеграция с DocHub доступна только пользователям, вошедшим через корпоративную учётную запись (LDAP). Сообщи об этом пользователю и не повторяй вызов.';
 const NO_IDENTITY_MESSAGE =
   'Учётная запись пользователя не сопоставлена с логином DocHub — нужен администратор. Сообщи об этом пользователю и не повторяй вызов.';
+const NO_LLM_MESSAGE =
+  'Не удалось подключить модель для чтения документов DocHub. Сообщи пользователю, что глубокое чтение сейчас недоступно, и опирайся на dochub_search.';
 const NOT_IMPLEMENTED_MESSAGE =
   'Этот инструмент ещё не включён в текущей сборке. Используй dochub_search и расскажи пользователю, что глубокое чтение документов пока недоступно.';
 
@@ -176,6 +189,38 @@ function formatSearch(
 export interface CreateDochubToolsParams {
   req: ServerRequest;
   signal?: AbortSignal;
+  /** The calling agent: its endpoint and model run the sub-agents by default. */
+  agent?: DochubLlmAgent;
+  /** Credential lookups for user-provided endpoint keys. */
+  db?: EndpointDbMethods;
+  /** Test seam: replaces model resolution, never used by the server. */
+  resolveLlm?: (settings: DochubAgentSettings) => Promise<DochubLlm>;
+}
+
+function describeDocumentMiss(
+  collectionName: string,
+  resolution: DochubDocumentResolution & { ok: false },
+): string {
+  const list = resolution.candidates
+    .slice(0, 15)
+    .map((ref) => `- №${ref.seq} «${ref.title}»`)
+    .join('\n');
+  if (resolution.reason === 'ambiguous') {
+    return `Под это описание в коллекции «${collectionName}» подходит несколько документов. Уточни номер:\n${list}`;
+  }
+  const hint = list ? `\nДокументы коллекции (первые):\n${list}` : '';
+  return `Такого документа в коллекции «${collectionName}» нет. Найди нужный через dochub_search и передай его номер (№).${hint}`;
+}
+
+/** "12-30" or "12"; anything else was already refused by the schema pattern. */
+export function parsePages(value: string | undefined): { from: number; to?: number } | undefined {
+  const match = /^\s*(\d+)\s*(?:-\s*(\d+))?\s*$/.exec(value ?? '');
+  if (!match) {
+    return undefined;
+  }
+  const from = Number(match[1]);
+  const to = match[2] != null ? Number(match[2]) : undefined;
+  return to != null && to < from ? { from: to, to: from } : { from, to };
 }
 
 /**
@@ -185,7 +230,7 @@ export interface CreateDochubToolsParams {
  * still lists them.
  */
 export function createDochubTools(params: CreateDochubToolsParams): DynamicStructuredTool[] {
-  const { req, signal } = params;
+  const { req, signal, agent, db } = params;
   if (!isDochubConfigured(req.config)) {
     logger.warn('[dochub] tools requested while the integration is not configured');
     return [];
@@ -239,11 +284,70 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
     },
   );
 
-  const read = tool(async () => NOT_IMPLEMENTED_MESSAGE, {
-    name: dochubToolkit.dochub_read.name,
-    description: dochubToolkit.dochub_read.description,
-    schema: dochubToolkit.dochub_read.schema,
-  });
+  const resolveLlm =
+    params.resolveLlm ??
+    (async (settings: DochubAgentSettings): Promise<DochubLlm> => {
+      if (!db) {
+        throw new Error('DocHub sub-agent needs credential lookups (db)');
+      }
+      return resolveDochubLlm({ req, agent, settings, db });
+    });
+
+  const loadLlm = async (settings: DochubAgentSettings): Promise<DochubLlm | undefined> => {
+    try {
+      return await resolveLlm(settings);
+    } catch (error) {
+      logger.error('[dochub] sub-agent model resolution failed', error);
+      return undefined;
+    }
+  };
+
+  const read = tool(
+    async ({
+      collection,
+      document,
+      question,
+      scope,
+      pages,
+    }: {
+      collection: string;
+      document: string;
+      question: string;
+      scope?: DochubReadScope;
+      pages?: string;
+    }) =>
+      withContext({ req, signal, toolName: 'dochub_read' }, async (context) => {
+        const resolved = await context.catalog.resolveCollection(collection);
+        if (!resolved.ok) {
+          return describeCollectionMiss(resolved);
+        }
+        const found = await context.catalog.resolveDocument(resolved.id, document);
+        if (!found.ok) {
+          return describeDocumentMiss(resolved.name, found);
+        }
+        const llm = await loadLlm(context.config.runtime.agent);
+        if (!llm) {
+          return NO_LLM_MESSAGE;
+        }
+        const { limits } = context.config.runtime;
+        const result = await readDocument({
+          ref: { ...found.ref, collectionName: resolved.name },
+          question,
+          scope: scope ?? 'auto',
+          pages: parsePages(pages),
+          client: context.client,
+          llm,
+          budget: context.budget,
+          limits,
+        });
+        return formatReadResult(result, question, limits.resultCharLimit);
+      }),
+    {
+      name: dochubToolkit.dochub_read.name,
+      description: dochubToolkit.dochub_read.description,
+      schema: dochubToolkit.dochub_read.schema,
+    },
+  );
 
   const survey = tool(async () => NOT_IMPLEMENTED_MESSAGE, {
     name: dochubToolkit.dochub_survey.name,

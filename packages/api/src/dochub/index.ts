@@ -5,4 +5,7 @@ export * from './config';
 export * from './budget';
 export * from './client';
 export * from './catalog';
+export * from './llm';
+export * from './prompts';
+export * from './reader';
 export * from './tools';

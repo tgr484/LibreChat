@@ -69,7 +69,14 @@ const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools, checkCapability } = require('~/server/services/Config');
 const { getMCPServersRegistry } = require('~/config');
-const { getRoleByName, setMemory, deleteMemory, getFormattedMemories } = require('~/models');
+const {
+  getUserKey,
+  setMemory,
+  deleteMemory,
+  getRoleByName,
+  getUserKeyValues,
+  getFormattedMemories,
+} = require('~/models');
 
 /**
  * Validates the availability and authentication of tools for a user based on environment variables or user-specific plugin authentication values.
@@ -227,7 +234,12 @@ const loadTools = async ({
      * so they need the request (identity, config) and the run's abort signal.
      */
     dochub: async (toolContextMap) => {
-      const dochubTools = createDochubTools({ req: options.req, signal });
+      const dochubTools = createDochubTools({
+        req: options.req,
+        signal,
+        agent,
+        db: { getUserKey, getUserKeyValues },
+      });
       if (dochubTools.length > 0) {
         toolContextMap.dochub = buildDochubToolContext();
       }

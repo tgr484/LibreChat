@@ -7,11 +7,13 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { IUser } from '@librechat/data-schemas';
 import type { AddressInfo } from 'node:net';
 import type { ServerRequest } from '~/types';
+import type { DochubLlm } from './llm';
 import { toolDefinitions } from '~/tools/registry/definitions';
 import { toolkitExpansion } from '~/tools/toolkits/mapping';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
+import { createDochubTools, parsePages } from './tools';
 import { resetDochubConfigCache } from './config';
-import { createDochubTools } from './tools';
+import { NO_DATA } from './prompts';
 
 const dir = mkdtempSync(join(tmpdir(), 'dochub-tools-'));
 const keyPath = join(dir, 'key.pem');
@@ -132,8 +134,21 @@ const makeReq = (user: Partial<IUser>, dochub: object | undefined = undefined): 
     },
   }) as unknown as ServerRequest;
 
+const stubLlm: DochubLlm = {
+  model: 'stub',
+  invoke: async (prompt, budget) => {
+    budget.chargeLlm();
+    if (prompt.includes('--- ВЫПИСКИ ---')) {
+      return 'Турбодетандер испытан на стенде [№3, с. 12].';
+    }
+    return prompt.includes('турбодетандер') ? 'испытан на стенде (с. 12)' : NO_DATA;
+  },
+};
+
 const toolByName = (req: ServerRequest, name: string) => {
-  const found = createDochubTools({ req }).find((candidate) => candidate.name === name);
+  const found = createDochubTools({ req, resolveLlm: async () => stubLlm }).find(
+    (candidate) => candidate.name === name,
+  );
   if (!found) {
     throw new Error(`tool ${name} was not created`);
   }
@@ -236,5 +251,102 @@ describe('dochub_search', () => {
     });
 
     expect(result).toContain('нет доступа');
+  });
+});
+
+describe('dochub_read', () => {
+  beforeEach(() => {
+    routes['GET /api/integration/v1/collections/7'] = () => ({
+      status: 200,
+      body: {
+        id: 7,
+        name: 'Нефтяное хозяйство 2018',
+        description: null,
+        owner_username: null,
+        is_member: true,
+        next_cursor: null,
+        documents: [
+          {
+            seq: 3,
+            id: 103,
+            title: 'Испытания турбодетандера',
+            doc_type: 'article',
+            category_name: null,
+            summary_preview: 'выжимка',
+            can_open: true,
+          },
+        ],
+      },
+    });
+    routes['GET /api/integration/v1/documents/103/outline'] = () => ({
+      status: 200,
+      body: {
+        document_id: 103,
+        title: 'Испытания турбодетандера',
+        content_version: '2026-09-14 10:22:31|30000',
+        chapters: [{ index: 0, heading: 'Введение', chars: 100, page_from: 12, page_to: 12 }],
+      },
+    });
+    routes['GET /api/integration/v1/documents/103/content'] = () => ({
+      status: 200,
+      body: {
+        document_id: 103,
+        content_version: '2026-09-14 10:22:31|30000',
+        chapter: 0,
+        page_from: 12,
+        page_to: 12,
+        chars: 60,
+        truncated: false,
+        text: '<!-- page: 12 -->\nтурбодетандер испытан на стенде',
+      },
+    });
+  });
+
+  it('reads a document by its number and returns a condensed answer', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_read').invoke({
+      collection: 'Нефтяное хозяйство 2018',
+      document: '№3',
+      question: 'Как испытывали турбодетандер?',
+    });
+
+    expect(result).toContain('№3 «Испытания турбодетандера» (коллекция «Нефтяное хозяйство 2018»)');
+    expect(result).toContain('Прочитано частей: 1 из 1, с. 12–12.');
+    expect(result).toContain('Турбодетандер испытан на стенде [№3, с. 12]');
+    expect(requests).toContain('GET /api/integration/v1/documents/103/content');
+  });
+
+  /** DocHub's document routes are not scoped to a collection; the tool is. */
+  it('refuses a document number the collection does not have', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_read').invoke({
+      collection: '7',
+      document: '42',
+      question: 'Что там?',
+    });
+
+    expect(result).toContain('Такого документа в коллекции');
+    expect(requests.some((request) => request.includes('/documents/'))).toBe(false);
+  });
+
+  it('says deep reading is unavailable when no model can be resolved', async () => {
+    const tool = createDochubTools({
+      req: makeReq({}),
+      resolveLlm: async () => {
+        throw new Error('no endpoint');
+      },
+    }).find((candidate) => candidate.name === 'dochub_read');
+
+    const result = await tool?.invoke({ collection: '7', document: '3', question: 'Что там?' });
+    expect(result).toContain('глубокое чтение сейчас недоступно');
+    expect(requests.some((request) => request.includes('/documents/'))).toBe(false);
+  });
+});
+
+describe('parsePages', () => {
+  it('reads a page or a range, in either order', () => {
+    expect(parsePages('12')).toEqual({ from: 12, to: undefined });
+    expect(parsePages('12-30')).toEqual({ from: 12, to: 30 });
+    expect(parsePages('30-12')).toEqual({ from: 12, to: 30 });
+    expect(parsePages(undefined)).toBeUndefined();
+    expect(parsePages('с. 12')).toBeUndefined();
   });
 });
