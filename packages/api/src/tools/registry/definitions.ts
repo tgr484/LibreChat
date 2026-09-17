@@ -1,6 +1,7 @@
 import { WebSearchToolDefinition, CalculatorToolDefinition } from '@librechat/agents';
 import type { ExtendedJsonSchema } from './schema';
 import { AskUserQuestionToolDefinition } from '~/agents/hitl/askUserQuestionTool';
+import { dochubToolkit } from '~/tools/toolkits/dochub';
 import { geminiToolkit } from '~/tools/toolkits/gemini';
 import { oaiToolkit } from '~/tools/toolkits/oai';
 
@@ -421,6 +422,35 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: geminiToolkit.gemini_image_gen.schema,
     toolType: 'builtin',
     responseFormat: geminiToolkit.gemini_image_gen.responseFormat,
+  },
+  /**
+   * DocHub research tools. They return plain text: a DocHub attachment has no
+   * renderer in the client yet, and an unknown attachment type would render as
+   * nothing at all.
+   */
+  dochub_collections: {
+    name: dochubToolkit.dochub_collections.name,
+    description: dochubToolkit.dochub_collections.description,
+    schema: dochubToolkit.dochub_collections.schema,
+    toolType: 'builtin',
+  },
+  dochub_search: {
+    name: dochubToolkit.dochub_search.name,
+    description: dochubToolkit.dochub_search.description,
+    schema: dochubToolkit.dochub_search.schema,
+    toolType: 'builtin',
+  },
+  dochub_read: {
+    name: dochubToolkit.dochub_read.name,
+    description: dochubToolkit.dochub_read.description,
+    schema: dochubToolkit.dochub_read.schema,
+    toolType: 'builtin',
+  },
+  dochub_survey: {
+    name: dochubToolkit.dochub_survey.name,
+    description: dochubToolkit.dochub_survey.description,
+    schema: dochubToolkit.dochub_survey.schema,
+    toolType: 'builtin',
   },
 };
 

@@ -8,6 +8,7 @@ const {
   mergeAccessibleCodeEnvironments,
   cacheConfig,
   standardCache,
+  isDochubConfigured,
 } = require('@librechat/api');
 const { setCachedTools, invalidateCachedTools } = require('./getCachedTools');
 const { loadAndFormatTools } = require('~/server/services/start/tools');
@@ -41,6 +42,7 @@ const loadBaseConfig = async () => {
     adminFilter: config.filteredTools,
     adminIncluded: config.includedTools,
     directory: paths.structuredTools,
+    dochubEnabled: isDochubConfigured({ dochub: config.dochub }),
   });
   return AppService({ config, paths, systemTools });
 };

@@ -948,4 +948,63 @@ describe('Tool Handlers', () => {
       expect(mockCreateSearchTool).not.toHaveBeenCalled();
     });
   });
+
+  describe('DocHub toolkit', () => {
+    const DOCHUB_TOOLS = ['dochub_collections', 'dochub_search', 'dochub_read', 'dochub_survey'];
+    let keyDir;
+    let keyPath;
+
+    beforeAll(() => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const { generateKeyPairSync } = require('crypto');
+      keyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dochub-handle-'));
+      keyPath = path.join(keyDir, 'key.pem');
+      const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+      fs.writeFileSync(keyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }));
+    });
+
+    afterAll(() => {
+      require('fs').rmSync(keyDir, { recursive: true, force: true });
+    });
+
+    const dochubReq = () => ({
+      user: { id: fakeUser._id.toString(), provider: 'ldap', ldapId: 'ivanov' },
+      config: {
+        dochub: {
+          enabled: true,
+          baseURL: 'http://dochub.invalid:8000/api/integration/v1',
+          keyId: 'test',
+          privateKeyPath: keyPath,
+        },
+      },
+    });
+
+    /** All four names share one factory; the run must still see each tool once. */
+    it('loads every DocHub tool exactly once', async () => {
+      const { loadedTools, toolContextMap } = await loadTools({
+        user: fakeUser._id.toString(),
+        tools: DOCHUB_TOOLS,
+        options: { req: dochubReq() },
+      });
+
+      expect(loadedTools.map((tool) => tool.name).sort()).toEqual([...DOCHUB_TOOLS].sort());
+      expect(toolContextMap.dochub).toContain('DocHub');
+    });
+
+    it('loads nothing when the integration is not configured', async () => {
+      const req = dochubReq();
+      req.config.dochub.enabled = false;
+
+      const { loadedTools, toolContextMap } = await loadTools({
+        user: fakeUser._id.toString(),
+        tools: DOCHUB_TOOLS,
+        options: { req },
+      });
+
+      expect(loadedTools).toEqual([]);
+      expect(toolContextMap.dochub).toBeUndefined();
+    });
+  });
 });

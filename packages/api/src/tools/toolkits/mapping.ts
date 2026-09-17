@@ -5,8 +5,10 @@
  */
 export const toolkitExpansion: {
   readonly image_gen_oai: readonly ['image_edit_oai'];
+  readonly dochub: readonly ['dochub_collections', 'dochub_search', 'dochub_read', 'dochub_survey'];
 } = {
   image_gen_oai: ['image_edit_oai'],
+  dochub: ['dochub_collections', 'dochub_search', 'dochub_read', 'dochub_survey'],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
 /** Reverse mapping: maps child tool names to their parent toolkit key */

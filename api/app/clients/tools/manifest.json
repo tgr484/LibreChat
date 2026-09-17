@@ -173,5 +173,13 @@
         "optional": true
       }
     ]
+  },
+  {
+    "name": "DocHub",
+    "pluginKey": "dochub",
+    "toolkit": true,
+    "agentsOnly": true,
+    "description": "Поиск и глубокое чтение документов в коллекциях DocHub",
+    "authConfig": []
   }
 ]
