@@ -65,9 +65,6 @@ export function stripReasoning(text: string): string {
 
 const CUT_OFF_REASONING = /<think>(?![\s\S]*<\/think>)/i;
 
-/** Custom endpoints are the OpenAI-compatible gateways (vLLM, SGLang behind LiteLLM). */
-const KNOWN_ENDPOINTS: ReadonlySet<string> = new Set(Object.values(EModelEndpoint));
-
 type SubAgentOptions = ClientOptions & {
   maxTokens?: number;
   maxOutputTokens?: number;
@@ -167,7 +164,11 @@ export async function resolveDochubLlm(params: {
   if (!isGpt5Plus && !isOSeries) {
     clientOptions.temperature = settings.temperature;
   }
-  if (!settings.thinking && !KNOWN_ENDPOINTS.has(endpoint)) {
+  /** Only `librechat.yaml` custom endpoints on the OpenAI client: the vLLM/SGLang gateways. */
+  const isCustomGateway =
+    providerConfig.customEndpointConfig != null &&
+    providerConfig.overrideProvider === Providers.OPENAI;
+  if (!settings.thinking && isCustomGateway) {
     const kwargs = clientOptions.modelKwargs ?? {};
     const template = (kwargs.chat_template_kwargs ?? {}) as Record<string, unknown>;
     clientOptions.modelKwargs = {

@@ -35,6 +35,8 @@ export interface ReadDocumentParams {
   limits: DochubLimits;
   /** Survey lowers it so one document cannot eat the whole budget. */
   maxChapters?: number;
+  /** Survey keeps each document's answer short: only a part of it reaches the chat. */
+  answerCharLimit?: number;
 }
 
 const PAGE_MARKER = /<!--\s*page:\s*\d+\s*-->/g;
@@ -301,7 +303,7 @@ async function reduce(
         seq: params.ref.seq,
         title: params.ref.title,
         question: params.question,
-        limit: params.limits.resultCharLimit,
+        limit: params.answerCharLimit ?? params.limits.resultCharLimit,
         findings: useful,
       }),
       params.budget,

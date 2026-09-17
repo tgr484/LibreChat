@@ -162,6 +162,7 @@ export async function surveyCollection(
           budget: slice,
           limits,
           maxChapters,
+          answerCharLimit: limits.extractionCharLimit * 2,
         });
         return { ref, synthesis: result.synthesis, source: result.source, notes: result.notes };
       } finally {

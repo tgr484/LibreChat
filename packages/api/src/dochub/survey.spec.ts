@@ -163,6 +163,9 @@ describe('surveyCollection', () => {
     expect(result.documents.map((document) => document.ref.seq).sort()).toEqual([1, 2, 3]);
     expect(result.synthesis).toBe('ОБЩАЯ СВОДКА');
     expect(result.notes.join(' ')).toContain('разобраны 3');
+    /** A document's answer is an input to the survey reduce, not a chat answer. */
+    const documentReduce = env.prompts.find((prompt) => prompt.includes('--- ВЫПИСКИ ---')) ?? '';
+    expect(documentReduce).toContain('Не более 2400 символов');
     expect(env.prompts.filter((prompt) => prompt.includes('--- РАЗБОРЫ ---'))).toHaveLength(1);
   });
 
