@@ -31,6 +31,15 @@ describe('loadAndFormatTools — DocHub', () => {
     expect(tools.dochub_search.function.parameters.required).toEqual(['collection', 'query']);
   });
 
+  it('lets the admin include the whole toolkit by its key', () => {
+    const tools = loadAndFormatTools({ directory, dochubEnabled: true, adminIncluded: ['dochub'] });
+
+    for (const name of DOCHUB_TOOLS) {
+      expect(tools[name].function.name).toBe(name);
+    }
+    expect(tools).not.toHaveProperty('calculator');
+  });
+
   it('lets the admin filter the whole toolkit by its key', () => {
     const tools = loadAndFormatTools({ directory, dochubEnabled: true, adminFilter: ['dochub'] });
 

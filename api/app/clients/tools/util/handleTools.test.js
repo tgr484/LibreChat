@@ -949,6 +949,35 @@ describe('Tool Handlers', () => {
     });
   });
 
+  describe('toolkit loading', () => {
+    /** Toolkit children share their parent's loader; each tool must still arrive exactly once. */
+    it('loads image_gen_oai and image_edit_oai once each when both are requested', async () => {
+      const originalKey = process.env.IMAGE_GEN_OAI_API_KEY;
+      process.env.IMAGE_GEN_OAI_API_KEY = 'test-key';
+      try {
+        const { loadedTools } = await loadTools({
+          user: fakeUser._id.toString(),
+          tools: ['image_gen_oai', 'image_edit_oai'],
+          agent: { id: 'agent-1', provider: 'openAI', model: 'gpt-4o' },
+          options: {
+            req: { user: { id: fakeUser._id.toString() }, config: { paths: { uploads: '/tmp' } } },
+          },
+        });
+
+        expect(loadedTools.map((tool) => tool.name).sort()).toEqual([
+          'image_edit_oai',
+          'image_gen_oai',
+        ]);
+      } finally {
+        if (originalKey == null) {
+          delete process.env.IMAGE_GEN_OAI_API_KEY;
+        } else {
+          process.env.IMAGE_GEN_OAI_API_KEY = originalKey;
+        }
+      }
+    });
+  });
+
   describe('DocHub toolkit', () => {
     const DOCHUB_TOOLS = ['dochub', 'dochub_search', 'dochub_read', 'dochub_survey'];
     let keyDir;

@@ -28,7 +28,11 @@ import { createDochubClient } from './client';
 import { createRunBudget } from './budget';
 import { resolveDochubLlm } from './llm';
 
-/** One catalog per chat turn: several tool calls must not re-list the collections. */
+/**
+ * One catalog per chat turn: several tool calls must not re-list the collections.
+ * Keyed by the DocHub login as well, so a listing can never be served to anyone
+ * but the user it was fetched for.
+ */
 const CATALOG_STORE = Symbol.for('librechat.dochub.catalog');
 
 const NOT_LDAP_MESSAGE =
@@ -47,14 +51,16 @@ interface ToolContext {
   config: DochubResolvedConfig;
 }
 
-function storeFor(req: ServerRequest): DochubCatalogStore {
-  const holder = req as unknown as Record<symbol, DochubCatalogStore | undefined>;
-  const existing = holder[CATALOG_STORE];
+function storeFor(req: ServerRequest, sub: string): DochubCatalogStore {
+  const holder = req as unknown as Record<symbol, Map<string, DochubCatalogStore> | undefined>;
+  const stores = holder[CATALOG_STORE] ?? new Map<string, DochubCatalogStore>();
+  holder[CATALOG_STORE] = stores;
+  const existing = stores.get(sub);
   if (existing) {
     return existing;
   }
   const created = createDochubCatalogStore();
-  holder[CATALOG_STORE] = created;
+  stores.set(sub, created);
   return created;
 }
 
@@ -87,7 +93,7 @@ async function withContext(
     subject,
     budget,
   });
-  const catalog = createDochubCatalog({ client, store: storeFor(params.req) });
+  const catalog = createDochubCatalog({ client, store: storeFor(params.req, subject.sub) });
   const startedAt = Date.now();
 
   try {

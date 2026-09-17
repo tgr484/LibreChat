@@ -194,6 +194,22 @@ describe('createDochubTools', () => {
   });
 });
 
+describe('catalog sharing', () => {
+  it('reuses one listing within a turn but never across users', async () => {
+    const req = makeReq({});
+    const tools = createDochubTools({ req, resolveLlm: async () => stubLlm });
+    const collections = tools.find((candidate) => candidate.name === 'dochub');
+
+    await collections?.invoke({});
+    await collections?.invoke({});
+    expect(requests.filter((request) => request.endsWith('/collections'))).toHaveLength(1);
+
+    (req.user as IUser).ldapId = 'petrov';
+    await collections?.invoke({});
+    expect(requests.filter((request) => request.endsWith('/collections'))).toHaveLength(2);
+  });
+});
+
 describe('dochub', () => {
   it('lists the collections by section', async () => {
     const result = await toolByName(makeReq({}), 'dochub').invoke({});
