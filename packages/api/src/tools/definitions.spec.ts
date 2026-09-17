@@ -1133,6 +1133,27 @@ describe('definitions.ts', () => {
         const editDefs = result.toolDefinitions.filter((d) => d.name === 'image_edit_oai');
         expect(editDefs).toHaveLength(1);
       });
+
+      /** The agent builder saves only the toolkit key; the model must still see every tool. */
+      it('should expand the saved dochub key to every DocHub tool', async () => {
+        mockIsBuiltInTool.mockImplementation((name) => name === 'dochub');
+
+        const result = await loadToolDefinitions(
+          { userId: 'user-123', agentId: 'agent-123', tools: ['dochub'] },
+          {
+            getOrFetchMCPServerTools: mockGetOrFetchMCPServerTools,
+            isBuiltInTool: mockIsBuiltInTool,
+          },
+        );
+
+        expect(result.toolDefinitions.map((d) => d.name)).toEqual([
+          'dochub',
+          'dochub_search',
+          'dochub_read',
+          'dochub_survey',
+        ]);
+        expect(result.toolDefinitions.every((d) => d.parameters != null)).toBe(true);
+      });
     });
 
     describe('toolkit mapping invariants', () => {

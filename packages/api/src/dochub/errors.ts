@@ -129,8 +129,7 @@ const MODEL_MESSAGES: Readonly<Record<DochubErrorKind, string>> = {
     'Учётная запись пользователя в DocHub не создана — нужен администратор DocHub. Сообщи об этом пользователю.',
   integration_off:
     'Интеграция с DocHub сейчас выключена на стороне DocHub. Сообщи пользователю, что материалы недоступны.',
-  collection_not_found:
-    'Такой коллекции в DocHub нет. Вызови dochub_collections и выбери коллекцию из списка.',
+  collection_not_found: 'Такой коллекции в DocHub нет. Вызови dochub и выбери коллекцию из списка.',
   not_found:
     'Документ недоступен для чтения. Если он входит в коллекцию, попробуй получить только выжимку.',
   version_mismatch:

@@ -161,7 +161,8 @@ describe('createDochubTools', () => {
     const tools = createDochubTools({ req: makeReq({}) });
     const names = tools.map((candidate) => candidate.name);
 
-    expect(names).toEqual([...toolkitExpansion.dochub]);
+    /** The parent is a tool itself: the builder saves `dochub`, the registry expands it. */
+    expect(names).toEqual(['dochub', ...toolkitExpansion.dochub]);
     for (const created of tools) {
       const declared = dochubToolkit[created.name as keyof typeof dochubToolkit];
       expect(created.description).toBe(declared.description);
@@ -179,23 +180,23 @@ describe('createDochubTools', () => {
   });
 
   it('refuses users who did not sign in through LDAP, without calling DocHub', async () => {
-    const tool = toolByName(makeReq({ provider: 'local' }), 'dochub_collections');
+    const tool = toolByName(makeReq({ provider: 'local' }), 'dochub');
 
     await expect(tool.invoke({})).resolves.toContain('LDAP');
     expect(requests).toHaveLength(0);
   });
 
   it('refuses an LDAP login DocHub would reject, without calling DocHub', async () => {
-    const tool = toolByName(makeReq({ ldapId: 'ivanov@corp.rn-t.ru' }), 'dochub_collections');
+    const tool = toolByName(makeReq({ ldapId: 'ivanov@corp.rn-t.ru' }), 'dochub');
 
     await expect(tool.invoke({})).resolves.toContain('не сопоставлена');
     expect(requests).toHaveLength(0);
   });
 });
 
-describe('dochub_collections', () => {
+describe('dochub', () => {
   it('lists the collections by section', async () => {
-    const result = await toolByName(makeReq({}), 'dochub_collections').invoke({});
+    const result = await toolByName(makeReq({}), 'dochub').invoke({});
 
     expect(result).toContain('Свои коллекции:');
     expect(result).toContain('«Нефтяное хозяйство 2018» (id 7, документов: 42) — Выпуски журнала');
@@ -205,7 +206,7 @@ describe('dochub_collections', () => {
   });
 
   it('narrows the list by a filter', async () => {
-    const result = await toolByName(makeReq({}), 'dochub_collections').invoke({
+    const result = await toolByName(makeReq({}), 'dochub').invoke({
       filter: 'бурению',
     });
 

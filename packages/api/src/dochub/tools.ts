@@ -142,7 +142,7 @@ function formatCollections(
 
   if (lines.length === 0) {
     return wanted
-      ? `Коллекций с «${filter}» в названии нет. Покажи пользователю полный список, вызвав dochub_collections без фильтра.`
+      ? `Коллекций с «${filter}» в названии нет. Покажи пользователю полный список, вызвав dochub без фильтра.`
       : 'У пользователя нет доступных коллекций DocHub.';
   }
   return lines.join('\n');
@@ -165,7 +165,7 @@ function formatSearch(
   response: DochubSearchResponse,
 ): string {
   if (response.hits.length === 0) {
-    return `Коллекция «${collectionName}» (id ${collectionId}): по запросу ничего не найдено. Попробуй другие формулировки или проверь коллекцию через dochub_collections.`;
+    return `Коллекция «${collectionName}» (id ${collectionId}): по запросу ничего не найдено. Попробуй другие формулировки или проверь коллекцию через dochub.`;
   }
 
   const lines = [
@@ -240,7 +240,7 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
 
   const collections = tool(
     async ({ filter }: { filter?: string }) =>
-      withContext({ req, signal, toolName: 'dochub_collections' }, async ({ catalog }) => {
+      withContext({ req, signal, toolName: 'dochub' }, async ({ catalog }) => {
         const response = await catalog.listCollections();
         return formatCollections(
           [
@@ -252,9 +252,9 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
         );
       }),
     {
-      name: dochubToolkit.dochub_collections.name,
-      description: dochubToolkit.dochub_collections.description,
-      schema: dochubToolkit.dochub_collections.schema,
+      name: dochubToolkit.dochub.name,
+      description: dochubToolkit.dochub.description,
+      schema: dochubToolkit.dochub.schema,
     },
   );
 

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadAndFormatTools } = require('./tools');
 
-const DOCHUB_TOOLS = ['dochub_collections', 'dochub_search', 'dochub_read', 'dochub_survey'];
+const DOCHUB_TOOLS = ['dochub', 'dochub_search', 'dochub_read', 'dochub_survey'];
 
 describe('loadAndFormatTools — DocHub', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tools-'));

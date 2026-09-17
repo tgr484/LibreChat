@@ -428,10 +428,10 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
    * renderer in the client yet, and an unknown attachment type would render as
    * nothing at all.
    */
-  dochub_collections: {
-    name: dochubToolkit.dochub_collections.name,
-    description: dochubToolkit.dochub_collections.description,
-    schema: dochubToolkit.dochub_collections.schema,
+  dochub: {
+    name: dochubToolkit.dochub.name,
+    description: dochubToolkit.dochub.description,
+    schema: dochubToolkit.dochub.schema,
     toolType: 'builtin',
   },
   dochub_search: {

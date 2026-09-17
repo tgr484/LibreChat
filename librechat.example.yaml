@@ -1238,7 +1238,7 @@ endpoints:
 #     #   temperature: 0.1
 
 # DocHub integration: agent tools for research inside DocHub collections
-# (dochub_collections, dochub_search, dochub_read, dochub_survey).
+# (dochub, dochub_search, dochub_read, dochub_survey).
 # The tools read documents and condense them with their own LLM calls, so the
 # limits bound ONE tool call. Only LDAP users can use them. Without a valid
 # configuration the tools do not appear at all. See docs/dochub-integration.md.

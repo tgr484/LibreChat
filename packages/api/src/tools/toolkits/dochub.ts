@@ -13,7 +13,7 @@ import type { ExtendedJsonSchema } from '../registry/schema';
 const COLLECTION_PROPERTY: ExtendedJsonSchema = {
   type: 'string',
   description:
-    'Коллекция DocHub: название так, как его назвал пользователь («Нефтяное хозяйство 2018»), или числовой id из dochub_collections.',
+    'Коллекция DocHub: название так, как его назвал пользователь («Нефтяное хозяйство 2018»), или числовой id из dochub.',
 };
 
 const DEFAULT_COLLECTIONS_DESCRIPTION = `Возвращает коллекции документов DocHub, доступные пользователю: свои, полученные по приглашению и публичные.
@@ -77,7 +77,7 @@ const readSchema: ExtendedJsonSchema = {
     document: {
       type: 'string',
       description:
-        'Номер документа (№) в коллекции — тот, что вернули dochub_search или dochub_collections. Можно указать точное название.',
+        'Номер документа (№) в коллекции — тот, что вернули dochub_search или dochub. Можно указать точное название.',
     },
     question: {
       type: 'string',
@@ -133,13 +133,13 @@ export interface DochubToolDefinition {
 }
 
 export const dochubToolkit: {
-  readonly dochub_collections: DochubToolDefinition;
+  readonly dochub: DochubToolDefinition;
   readonly dochub_search: DochubToolDefinition;
   readonly dochub_read: DochubToolDefinition;
   readonly dochub_survey: DochubToolDefinition;
 } = {
-  dochub_collections: {
-    name: 'dochub_collections',
+  dochub: {
+    name: 'dochub',
     description: describe('DOCHUB_COLLECTIONS_DESCRIPTION', DEFAULT_COLLECTIONS_DESCRIPTION),
     schema: collectionsSchema,
   },
