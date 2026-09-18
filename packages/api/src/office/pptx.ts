@@ -6,17 +6,18 @@ import type {
   PresentationSpec,
   PresentationTable,
 } from './types';
+import { BRAND_ACCENT, BRAND_LOGO_PNG } from './brand';
 
 export const PPTX_MIME_TYPE =
   'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 /**
  * Minimalist theme: white slides, one muted accent, a single sans-serif face.
- * Arial is present in PowerPoint and metric-compatible with LibreOffice's
- * Liberation Sans, so the layout holds on both without embedding fonts.
+ * Calibri matches templates/template.pptx's font scheme and is metric-compatible
+ * with LibreOffice's Carlito, so the layout holds on both without embedding fonts.
  */
 const THEME = {
-  font: 'Arial',
+  font: 'Calibri',
   text: '1F2328',
   muted: '6B7280',
   accent: '2F5D8A',
@@ -36,6 +37,27 @@ const SOURCES_TOP = 6.35;
 
 const MASTER = 'LC_MINIMAL';
 const SECTION_MASTER = 'LC_MINIMAL_SECTION';
+
+/**
+ * Geometry lifted from templates/template.pptx (a 10 × 5.625 in canvas) and
+ * scaled ×1.3333 onto this deck's 13.333 × 7.5 in `LAYOUT_WIDE` canvas so the
+ * wordmark and corner swatch land in the same proportional spot.
+ */
+const LOGO = { x: 11.78, y: 0.4, w: 1.11, h: 0.37 } as const;
+const CORNER_ACCENT = { x: 0, y: PAGE.height - 0.59, w: 0.59, h: 0.59 } as const;
+
+function addBrandMarks(objects: NonNullable<PptxGenJS.SlideMasterProps['objects']>): void {
+  objects.push(
+    {
+      rect: {
+        ...CORNER_ACCENT,
+        fill: { color: BRAND_ACCENT },
+        line: { color: BRAND_ACCENT, width: 0 },
+      },
+    },
+    { image: { ...LOGO, data: BRAND_LOGO_PNG } },
+  );
+}
 
 type TextRun = PptxGenJS.TextProps;
 type TableRow = PptxGenJS.TableRow;
@@ -98,28 +120,34 @@ function defineMasters(pptx: PptxGenJS, footer: string): void {
     align: 'right' as const,
   };
 
+  const masterObjects: NonNullable<PptxGenJS.SlideMasterProps['objects']> = [
+    {
+      line: {
+        x: PAGE.margin,
+        y: FOOTER_TOP - 0.08,
+        w: CONTENT_WIDTH,
+        h: 0,
+        line: { color: THEME.rule, width: 0.75 },
+      },
+    },
+    footerText,
+  ];
+  addBrandMarks(masterObjects);
+
   pptx.defineSlideMaster({
     title: MASTER,
     background: { color: THEME.background },
-    objects: [
-      {
-        line: {
-          x: PAGE.margin,
-          y: FOOTER_TOP - 0.08,
-          w: CONTENT_WIDTH,
-          h: 0,
-          line: { color: THEME.rule, width: 0.75 },
-        },
-      },
-      footerText,
-    ],
+    objects: masterObjects,
     slideNumber,
   });
+
+  const sectionObjects: NonNullable<PptxGenJS.SlideMasterProps['objects']> = [footerText];
+  addBrandMarks(sectionObjects);
 
   pptx.defineSlideMaster({
     title: SECTION_MASTER,
     background: { color: THEME.section },
-    objects: [footerText],
+    objects: sectionObjects,
     slideNumber,
   });
 }
@@ -302,6 +330,12 @@ function renderContent(
 function addTitleSlide(pptx: PptxGenJS, spec: PresentationSpec): void {
   const slide = pptx.addSlide();
   slide.background = { color: THEME.background };
+  slide.addShape('rect', {
+    ...CORNER_ACCENT,
+    fill: { color: BRAND_ACCENT },
+    line: { color: BRAND_ACCENT, width: 0 },
+  });
+  slide.addImage({ ...LOGO, data: BRAND_LOGO_PNG });
   slide.addShape('rect', {
     x: PAGE.margin + TEXT_INSET,
     y: 2.35,
