@@ -109,10 +109,19 @@ const content = (index: number, text: string, version = 'v1'): DochubContent => 
  * A deterministic stand-in for the model: extraction echoes the relevant line
  * of the fragment, selection and reduce answer from what the prompt carries.
  */
-function stubLlm(options: { selection?: string; failReduce?: boolean; hangOn?: string } = {}) {
+function stubLlm(
+  options: {
+    selection?: string;
+    failReduce?: boolean;
+    hangOn?: string;
+    contextTokens?: number;
+    failFast?: boolean;
+  } = {},
+) {
   const prompts: string[] = [];
   const llm: DochubLlm = {
     model: 'stub',
+    contextTokens: options.contextTokens,
     invoke: async (prompt, budget, phase) => {
       budget.chargeLlm(phase);
       prompts.push(prompt);
@@ -122,6 +131,18 @@ function stubLlm(options: { selection?: string; failReduce?: boolean; hangOn?: s
       }
       if (prompt.includes('Верни ТОЛЬКО номера частей')) {
         return options.selection ?? '';
+      }
+      if (
+        prompt.includes('--- ТЕКСТ ---') &&
+        prompt.includes('Составь ответ на вопрос строго по тексту')
+      ) {
+        if (options.failFast) {
+          throw new Error('gateway down');
+        }
+        const text = prompt.split('--- ТЕКСТ ---')[1] ?? '';
+        return text.includes('турбодетандер')
+          ? `СВОДКА-ОДНИМ-ВЫЗОВОМ: ${text.split('\n').length} строк`
+          : NO_DATA;
       }
       if (prompt.includes('--- ВЫПИСКИ ---')) {
         if (options.failReduce) {
@@ -240,6 +261,80 @@ describe('readDocument — whole document', () => {
     const result = await promise;
     expect(result.synthesis).toContain('Часть 0: турбодетандер на стенде');
     expect(result.notes.join(' ')).toContain('сведение не выполнено');
+  });
+});
+
+describe('readDocument — fast read', () => {
+  it('answers in one call when the whole document fits the context share', async () => {
+    const { promise, calls, prompts } = run(
+      {
+        outline: outline([chapter(0), chapter(1), chapter(2)]),
+        content: (index) => content(index, index === 1 ? 'турбодетандер на стенде' : 'прочее'),
+      },
+      { llm: stubLlm({ contextTokens: 100000 }) },
+    );
+
+    const result = await promise;
+
+    expect(calls.content.sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    expect(result.chaptersRead).toBe(3);
+    expect(result.chaptersTotal).toBe(3);
+    expect(result.synthesis).toMatch(/^СВОДКА-ОДНИМ-ВЫЗОВОМ/);
+    /** One model call total: no per-chapter extraction, no separate reduce. */
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('falls back to the chaptered read when the combined document does not fit', async () => {
+    /**
+     * Under 4096 chars each chapter goes through the real tokenizer, which
+     * compresses this filler to far fewer tokens than the context share; all
+     * three concatenated cross 4096 chars and fall back to a byte estimate
+     * the fast path's budget cannot absorb.
+     */
+    const filler = 'x'.repeat(1500);
+    const chapters = Array.from({ length: 3 }, (_, index) => chapter(index));
+    const { promise, calls, prompts } = run(
+      {
+        outline: outline(chapters),
+        content: (index) =>
+          content(index, index === 1 ? `турбодетандер на стенде. ${filler}` : `прочее. ${filler}`),
+      },
+      { llm: stubLlm({ contextTokens: 5000 }) },
+    );
+
+    const result = await promise;
+
+    expect(result.chaptersRead).toBe(3);
+    expect(prompts.filter((prompt) => prompt.includes('--- ТЕКСТ ---'))).toHaveLength(3);
+    expect(prompts.some((prompt) => prompt.includes('--- ВЫПИСКИ ---'))).toBe(true);
+    /** Every chapter is fetched twice: once for the abandoned fast attempt, once for the real read. */
+    expect(calls.content.filter((index) => index === 1)).toHaveLength(2);
+  });
+
+  it('falls back to the chaptered read when the fast call itself fails', async () => {
+    const { promise, prompts } = run(
+      {
+        outline: outline([chapter(0)]),
+        content: (index) => content(index, 'турбодетандер на стенде'),
+      },
+      { llm: stubLlm({ contextTokens: 100000, failFast: true }) },
+    );
+
+    const result = await promise;
+
+    expect(result.synthesis).toMatch(/^СВОДКА/);
+    expect(result.synthesis).not.toMatch(/^СВОДКА-ОДНИМ-ВЫЗОВОМ/);
+    expect(prompts.filter((prompt) => prompt.includes('--- ТЕКСТ ---'))).toHaveLength(2);
+  });
+
+  it('never attempts a fast read when the model context size is unknown', async () => {
+    const { promise, calls } = run({
+      outline: outline([chapter(0)]),
+      content: (index) => content(index, 'турбодетандер'),
+    });
+
+    await promise;
+    expect(calls.content).toEqual([0]);
   });
 });
 
