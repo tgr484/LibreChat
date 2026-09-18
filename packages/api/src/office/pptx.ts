@@ -242,6 +242,19 @@ function tableRows(table: PresentationTable): TableRow[] {
   return [header, ...body];
 }
 
+/** Column widths follow the longest cell, so a page-number column stays narrow. */
+function columnWidths(table: PresentationTable): number[] {
+  const weights = table.header.map((header, index) => {
+    const longest = table.rows.reduce(
+      (max, row) => Math.max(max, (row[index] ?? '').length),
+      header.length,
+    );
+    return Math.min(Math.max(longest, 6), 60);
+  });
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map((weight) => (weight / total) * CONTENT_WIDTH);
+}
+
 function tableFontSize(table: PresentationTable): number {
   const cells = table.header.length * (table.rows.length + 1);
   const chars = [table.header, ...table.rows].flat().reduce((sum, cell) => sum + cell.length, 0);
@@ -270,6 +283,7 @@ function renderContent(
       x: PAGE.margin,
       y: BODY_TOP + 0.1,
       w: CONTENT_WIDTH,
+      colW: columnWidths(spec.table),
       fontFace: THEME.font,
       fontSize: tableFontSize(spec.table),
       valign: 'middle',

@@ -3,10 +3,13 @@ import { tool } from '@librechat/agents/langchain/tools';
 import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import type { IMongoFile } from '@librechat/data-schemas';
 import type { PresentationColumn, PresentationSlide, PresentationSpec } from './types';
+import type { ExtendedJsonSchema } from '~/tools/registry/schema';
+import type { RawPresentationInput } from './input';
 import { bufferToOfficeHtml } from '~/files/documents/html';
 import { buildPresentation, PPTX_MIME_TYPE } from './pptx';
 import { officeToolkit } from '~/tools/toolkits/office';
 import { sanitizeFilename } from '~/utils/files';
+import { parsePresentationInput } from './input';
 
 /**
  * Artifact key for files a tool has already persisted. The tool-end callback
@@ -84,6 +87,22 @@ async function renderPreview(buffer: Buffer, filename: string): Promise<string |
 const describeResult = (spec: PresentationSpec, filename: string): string =>
   `Презентация «${spec.title}» создана: ${spec.slides.length + 1} слайдов, включая титульный. Файл ${filename} прикреплён к ответу — пользователь скачает его из карточки файла. Не пересказывай слайды целиком: кратко опиши структуру и предложи, что можно доработать.`;
 
+/**
+ * Validation schema for execution only: `slides` may arrive stringified, so it
+ * is checked by `parsePresentationInput` instead. The model reads the strict
+ * schema from the tool registry.
+ */
+const EXECUTION_SCHEMA: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    subtitle: { type: 'string' },
+    filename: { type: 'string' },
+    slides: {},
+  },
+  required: ['title', 'slides'],
+};
+
 export interface CreatePresentationToolParams {
   saveFile: SaveGeneratedFile;
 }
@@ -93,8 +112,12 @@ export function createPresentationTool({
 }: CreatePresentationToolParams): DynamicStructuredTool {
   const definition = officeToolkit.create_presentation;
   return tool(
-    async (input: PresentationSpec): Promise<[string, GeneratedFilesArtifact]> => {
-      const spec = normalizePresentation(input);
+    async (input: RawPresentationInput): Promise<[string, GeneratedFilesArtifact]> => {
+      const parsed = parsePresentationInput(input);
+      if (!parsed.ok) {
+        return [parsed.error, {}];
+      }
+      const spec = normalizePresentation(parsed.spec);
       const filename = presentationFilename(spec);
       try {
         const buffer = await buildPresentation(spec);
@@ -118,7 +141,7 @@ export function createPresentationTool({
     {
       name: definition.name,
       description: definition.description,
-      schema: definition.schema,
+      schema: EXECUTION_SCHEMA,
       responseFormat: definition.responseFormat,
     },
   ) as DynamicStructuredTool;

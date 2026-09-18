@@ -61,6 +61,76 @@ describe('createPresentationTool', () => {
   });
 });
 
+describe('createPresentationTool — arguments as local models send them', () => {
+  const collect = () => {
+    const saved: GeneratedFile[] = [];
+    const saveFile = async (file: GeneratedFile) => {
+      saved.push(file);
+      return { file_id: 'f1', filename: file.filename } as IMongoFile;
+    };
+    return { saved, saveFile };
+  };
+
+  /** Shape of a real Qwen call that the strict schema rejected in production. */
+  it('accepts slides passed as a JSON string', async () => {
+    const { saved, saveFile } = collect();
+    const slides = JSON.stringify([
+      { title: 'Что было сделано', layout: 'bullets', bullets: ['Проанализирована коллекция'] },
+      {
+        title: 'Статьи раздела по номерам',
+        layout: 'table',
+        table: { header: ['Выпуск', 'Статья', 'Стр.'], rows: [['№1 янв.', 'Харьяга', '34']] },
+      },
+      {
+        title: 'Ключевые технологии 2026',
+        layout: 'two_columns',
+        left: { heading: 'Лазерная сварка', bullets: ['Орбитальная сварка'] },
+        right: { heading: 'Хвостовики', bullets: ['Спуск с вращением'] },
+      },
+    ]);
+
+    const message = await invoke(
+      { title: 'Статьи по бурению', slides } as unknown as PresentationSpec,
+      saveFile,
+    );
+
+    expect(String(message.content)).toContain('4 слайдов');
+    expect(saved[0].text).toContain('Статьи раздела по номерам');
+    expect(saved[0].text).toContain('Спуск с вращением');
+  });
+
+  it('accepts a slide whose nested table and bullets are stringified', async () => {
+    const { saved, saveFile } = collect();
+    const slides = [
+      {
+        title: 'Итоги',
+        layout: 'table',
+        table: JSON.stringify({ header: ['Тема', 'Выпуски'], rows: [['Геотермия', '№3']] }),
+      },
+      { title: 'Ограничения', bullets: '["Номер за май не прочитан"]' },
+    ];
+
+    const message = await invoke(
+      { title: 'Обзор', slides } as unknown as PresentationSpec,
+      saveFile,
+    );
+
+    expect(String(message.content)).toContain('3 слайдов');
+    expect(saved[0].text).toContain('Номер за май не прочитан');
+  });
+
+  it('asks the model to retry when slides is not a list', async () => {
+    const { saved, saveFile } = collect();
+    const message = await invoke(
+      { title: 'Обзор', slides: 'слайды про бурение' } as unknown as PresentationSpec,
+      saveFile,
+    );
+
+    expect(saved).toHaveLength(0);
+    expect(String(message.content)).toContain('slides должен быть массивом');
+  });
+});
+
 describe('normalizePresentation', () => {
   it('drops list markers and empty bullets the layout would duplicate', () => {
     const [slide] = normalizePresentation(spec).slides;
