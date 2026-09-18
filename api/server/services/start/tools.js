@@ -8,6 +8,7 @@ const { Tools, ImageVisionTool } = require('librechat-data-provider');
 const {
   getToolkitKey,
   oaiToolkit,
+  officeToolkit,
   dochubToolkit,
   geminiToolkit,
   createAskUserQuestionTool,
@@ -97,6 +98,7 @@ function loadAndFormatTools({
     createAskUserQuestionTool(),
     ...Object.values(oaiToolkit),
     ...Object.values(geminiToolkit),
+    ...Object.values(officeToolkit),
     ...(dochubEnabled ? Object.values(dochubToolkit) : []),
   ];
   for (const toolInstance of basicToolInstances) {

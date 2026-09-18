@@ -13,6 +13,7 @@ jest.mock('@librechat/api', () => ({
     emitChunk: jest.fn(),
   },
   HOST_FILE_AUTHORING_ARTIFACT_KEY: '__librechat_file_authoring',
+  GENERATED_FILES_ARTIFACT_KEY: '__librechat_generated_files',
   getToolInputValidationDetails: jest.fn((result, validationError) =>
     validationError != null
       ? {
@@ -535,6 +536,61 @@ describe('createToolEndCallback', () => {
       });
     },
   );
+
+  describe('generated files artifact handling', () => {
+    const artifact = {
+      __librechat_generated_files: [
+        {
+          file_id: 'deck-1',
+          filename: 'Итоги.pptx',
+          filepath: '/uploads/user123/deck-1__Итоги.pptx',
+        },
+      ],
+    };
+    const metadata = {
+      run_id: 'run456',
+      thread_id: 'thread789',
+      executingAgentId: 'agent-a',
+      stepId: 'step-deck',
+    };
+
+    it.each(['createToolEndCallback', 'createResponsesToolEndCallback'])(
+      '%s attaches a file the tool already stored',
+      async (factoryName) => {
+        const toolEndCallback = require('../callbacks')[factoryName]({
+          req,
+          res,
+          artifactPromises,
+        });
+        await toolEndCallback({ output: { tool_call_id: 'call_deck', artifact } }, metadata);
+
+        const [attachment] = await Promise.all(artifactPromises);
+        expect(attachment).toMatchObject({
+          file_id: 'deck-1',
+          filename: 'Итоги.pptx',
+          toolCallId: 'call_deck',
+          agentId: 'agent-a',
+          stepId: 'step-deck',
+        });
+      },
+    );
+
+    it('streams the attachment with the run ids once the response has started', async () => {
+      res.headersSent = true;
+      const toolEndCallback = createToolEndCallback({ req, res, artifactPromises });
+      await toolEndCallback({ output: { tool_call_id: 'call_deck', artifact } }, metadata);
+
+      expect(res.write).toHaveBeenCalledTimes(1);
+      const [frame] = res.write.mock.calls[0];
+      expect(frame.startsWith('event: attachment\n')).toBe(true);
+      expect(JSON.parse(frame.split('data: ')[1])).toMatchObject({
+        file_id: 'deck-1',
+        messageId: 'run456',
+        conversationId: 'thread789',
+        toolCallId: 'call_deck',
+      });
+    });
+  });
 
   describe('ui_resources artifact handling', () => {
     it('should process ui_resources artifact and return attachment when headers not sent', async () => {

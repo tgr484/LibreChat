@@ -9,6 +9,7 @@ const esModules = [
   'domutils',
   'entities',
   'htmlparser2',
+  'pptxgenjs',
   'sanitize-html',
   'uuid',
 ].join('|');

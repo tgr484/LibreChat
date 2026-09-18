@@ -2,6 +2,7 @@ import { WebSearchToolDefinition, CalculatorToolDefinition } from '@librechat/ag
 import type { ExtendedJsonSchema } from './schema';
 import { AskUserQuestionToolDefinition } from '~/agents/hitl/askUserQuestionTool';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
+import { officeToolkit } from '~/tools/toolkits/office';
 import { geminiToolkit } from '~/tools/toolkits/gemini';
 import { oaiToolkit } from '~/tools/toolkits/oai';
 
@@ -451,6 +452,13 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     description: dochubToolkit.dochub_survey.description,
     schema: dochubToolkit.dochub_survey.schema,
     toolType: 'builtin',
+  },
+  create_presentation: {
+    name: officeToolkit.create_presentation.name,
+    description: officeToolkit.create_presentation.description,
+    schema: officeToolkit.create_presentation.schema,
+    toolType: 'builtin',
+    responseFormat: officeToolkit.create_presentation.responseFormat,
   },
 };
 

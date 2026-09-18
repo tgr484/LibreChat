@@ -181,5 +181,12 @@
     "agentsOnly": true,
     "description": "Поиск и глубокое чтение документов в коллекциях DocHub",
     "authConfig": []
+  },
+  {
+    "name": "Презентации",
+    "pluginKey": "create_presentation",
+    "agentsOnly": true,
+    "description": "Создание презентаций PowerPoint (.pptx) в минималистичном стиле",
+    "authConfig": []
   }
 ]
