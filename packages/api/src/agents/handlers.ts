@@ -110,6 +110,7 @@ import { createSkillContentDigest } from './compatibility';
 import { isMissingSandboxPathError } from '~/files/code';
 import { resolveDownloadPath } from '~/storage/path';
 import { parseFrontmatter } from '../skills/import';
+import { parseIfJsonLike } from '~/utils/common';
 import { cleanCodeToolOutput } from './cleanup';
 import { primeSkillFiles } from './skillFiles';
 import { instrumentPtcToolMap } from './ptc';
@@ -1511,16 +1512,7 @@ function getAuthorInfo(req: ServerRequest): {
    real array/object, which would otherwise fail validation and cost a retry
    round-trip. Parse a JSON string back to its value; leave non-strings and
    unparseable strings untouched so the explicit errors below still fire. */
-function coerceJsonValue(value: unknown): unknown {
-  if (typeof value !== 'string') {
-    return value;
-  }
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
+const coerceJsonValue = parseIfJsonLike;
 
 function normalizeEditArgs(args: {
   old_text?: unknown;

@@ -36,6 +36,29 @@ export function isEnabled(value?: string | boolean | null | undefined): boolean 
 export const isUserProvided = (value?: string): boolean => value === AuthType.USER_PROVIDED;
 
 /**
+ * Parses a value that may have arrived as a JSON-encoded array/object string
+ * instead of already-structured data — local models regularly stringify a
+ * nested field on its own. Only attempts the parse when the trimmed string
+ * looks like `[...]` or `{...}`, so free-text values that happen to be valid
+ * JSON primitives (e.g. a bullet reading "42" or "true") are never coerced.
+ * Anything else, or a failed parse, comes back unchanged.
+ */
+export function parseIfJsonLike(value: unknown): unknown {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+/**
  * @param values
  */
 export function optionalChainWithEmptyCheck(

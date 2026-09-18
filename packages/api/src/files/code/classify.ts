@@ -1,4 +1,5 @@
 import { excelMimeTypes } from 'librechat-data-provider';
+import { PPTX_MIME_TYPE, POTX_MIME_TYPE } from '../mime';
 
 export type CodeArtifactCategory = 'utf8-text' | 'document' | 'presentation' | 'other';
 
@@ -118,8 +119,8 @@ const UTF8_TEXT_MIME_EXACT = new Set<string>([
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const ODT_MIME = 'application/vnd.oasis.opendocument.text';
-const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-const POTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.template';
+const PPTX_MIME = PPTX_MIME_TYPE;
+const POTX_MIME = POTX_MIME_TYPE;
 
 const DOCUMENT_EXTENSIONS = new Set<string>(['docx', 'odt', 'xlsx', 'xls', 'ods']);
 const PRESENTATION_EXTENSIONS = new Set<string>(['pptx', 'potx']);

@@ -13,6 +13,7 @@ import type { DochubLlm } from './llm';
 import {
   documentReducePrompt,
   extractionPrompt,
+  fullDocumentPrompt,
   isNoData,
   parseSelection,
   selectionPrompt,
@@ -241,6 +242,106 @@ async function readChapters(
   return { findings, mismatch, read };
 }
 
+const TRUNCATED_NOTE =
+  '⚠ Часть документа длиннее предела одного ответа DocHub и прочитана не полностью.';
+
+/**
+ * A small document fits one model call whole: fetch every chapter, and if the
+ * combined text stays inside the model's context share, answer directly from
+ * it instead of extracting per chapter and reducing the extracts afterward.
+ * Returns null to let the chaptered path run instead — on a document that
+ * turns out too big, on a version change mid-fetch, or on a budget/transient
+ * failure the chaptered path is better placed to report.
+ */
+async function tryFastRead(
+  params: ReadDocumentParams,
+  outline: DochubOutline,
+  notes: readonly string[],
+): Promise<DochubReadResult | null> {
+  const { budget, llm } = params;
+  if (llm.contextTokens == null) {
+    return null;
+  }
+  const spent = budget.exhausted();
+  if (budget.inReduceWindow() || spent.http || spent.llm || budget.signal.aborted) {
+    return null;
+  }
+
+  const settled = await mapWithConcurrency(
+    outline.chapters,
+    params.limits.chapterConcurrency,
+    (chapter) =>
+      params.client.getContent(params.ref.id, { chapter: chapter.index }, outline.content_version),
+  );
+
+  const parts: string[] = [];
+  const findings: DochubChapterFinding[] = [];
+  for (const [index, result] of settled.entries()) {
+    if (result.status === 'rejected') {
+      if (isKind(result.reason, 'aborted')) {
+        throw result.reason;
+      }
+      return null;
+    }
+    const chapter = outline.chapters[index];
+    const heading = chapter.heading ? ` «${chapter.heading}»` : '';
+    parts.push(`### Часть ${chapter.index}${heading}\n${result.value.text}`);
+    findings.push({
+      chapterIndex: chapter.index,
+      heading: chapter.heading,
+      pageFrom: result.value.page_from ?? chapter.page_from,
+      pageTo: result.value.page_to ?? chapter.page_to,
+      text: '',
+      truncated: result.value.truncated,
+    });
+  }
+
+  const combined = parts.join('\n\n');
+  const pieces = await fitToContext(combined, llm);
+  if (pieces.length > 1) {
+    return null;
+  }
+
+  let answer: string;
+  try {
+    answer = await llm.invoke(
+      fullDocumentPrompt({
+        seq: params.ref.seq,
+        title: params.ref.title,
+        question: params.question,
+        limit: params.answerCharLimit ?? params.limits.resultCharLimit,
+        text: combined,
+      }),
+      budget,
+      'reduce',
+    );
+  } catch (error) {
+    if (isKind(error, 'aborted')) {
+      throw error;
+    }
+    logger.warn(`[dochub] fast read failed for document ${params.ref.id}`, error);
+    return null;
+  }
+
+  const synthesis = isNoData(answer)
+    ? `В документе №${params.ref.seq} не нашлось сведений по вопросу.`
+    : answer.trim();
+
+  return {
+    ref: params.ref,
+    source: 'content',
+    findings,
+    synthesis,
+    chaptersTotal: outline.chapters.length,
+    chaptersRead: outline.chapters.length,
+    notes: [
+      ...notes,
+      ...(findings.some((finding) => finding.truncated) ? [TRUNCATED_NOTE] : []),
+      ...budget.notes(),
+    ],
+  };
+}
+
 function emptyResult(
   ref: DochubDocumentRef,
   source: DochubReadResult['source'],
@@ -402,6 +503,13 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
   }
 
   const cap = params.maxChapters ?? params.limits.maxChapters;
+  if (outline.chapters.length <= cap) {
+    const fast = await tryFastRead(params, outline, notes);
+    if (fast) {
+      return fast;
+    }
+  }
+
   let plan = await planChapters(params, outline, cap);
   let pass = await readChapters(params, outline, plan);
 
@@ -429,7 +537,7 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
     );
   }
   if (pass.findings.some((finding) => finding.truncated)) {
-    notes.push('⚠ Часть документа длиннее предела одного ответа DocHub и прочитана не полностью.');
+    notes.push(TRUNCATED_NOTE);
   }
 
   return {

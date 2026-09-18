@@ -25,6 +25,7 @@ const {
   createOwnedToolEndHandler,
   createBackgroundCodeResultHandler: createCodeHarvestHandler,
   HOST_FILE_AUTHORING_ARTIFACT_KEY,
+  GENERATED_FILES_ARTIFACT_KEY,
   isCodeSessionToolName,
   getModelRefusalInfo,
   shouldSignalSandboxStart,
@@ -1056,6 +1057,20 @@ function createToolEndCallback({ req, res, artifactPromises, streamId = null, jo
       );
     }
 
+    for (const file of output.artifact[GENERATED_FILES_ARTIFACT_KEY] ?? []) {
+      const attachment = {
+        ...file,
+        ...getAttachmentOwnership(metadata),
+        messageId: metadata.run_id,
+        toolCallId: output.tool_call_id,
+        conversationId: metadata.thread_id,
+      };
+      if (isStreamWritable(res, streamId)) {
+        writeAttachment(res, streamId, attachment, jobCreatedAt);
+      }
+      artifactPromises.push(Promise.resolve(attachment));
+    }
+
     if (output.artifact.content) {
       /** @type {FormattedContent[]} */
       const content = output.artifact.content;
@@ -1413,6 +1428,18 @@ function createResponsesToolEndCallback({ req, res, tracker, artifactPromises })
           return null;
         }),
       );
+    }
+
+    for (const file of output.artifact[GENERATED_FILES_ARTIFACT_KEY] ?? []) {
+      const attachment = {
+        ...file,
+        ...getAttachmentOwnership(metadata),
+        toolCallId: output.tool_call_id,
+      };
+      if (res.headersSent && !res.writableEnded) {
+        writeResponsesAttachment(res, tracker, attachment, metadata);
+      }
+      artifactPromises.push(Promise.resolve(attachment));
     }
 
     if (output.artifact.content) {

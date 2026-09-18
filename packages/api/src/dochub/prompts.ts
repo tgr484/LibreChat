@@ -49,6 +49,29 @@ export function summaryPrompt(params: {
 ${params.summary}`;
 }
 
+export function fullDocumentPrompt(params: {
+  seq: number;
+  title: string;
+  question: string;
+  limit: number;
+  text: string;
+}): string {
+  return `Ты — помощник-исследователь. Ниже полный текст документа №${params.seq} «${params.title}». В тексте есть маркеры страниц вида <!-- page: N -->.
+
+Вопрос: «${params.question}»
+
+Составь ответ на вопрос строго по тексту:
+1. Связное изложение, 5–12 предложений.
+2. «Подтверждения:» — список ключевых утверждений, у каждого ссылка вида [№${params.seq}, с. N] по ближайшему предшествующему маркеру страницы.
+3. Ничего не додумывай сверх текста.
+Не более ${params.limit} символов. Отвечай на русском языке.
+
+Если в тексте нет ничего по вопросу, ответь ровно: ${NO_DATA}
+
+--- ТЕКСТ ---
+${params.text}`;
+}
+
 export function selectionPrompt(params: {
   title: string;
   question: string;
