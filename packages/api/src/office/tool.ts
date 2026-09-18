@@ -95,7 +95,7 @@ const describeResult = (spec: PresentationSpec, filename: string): string =>
 const EXECUTION_SCHEMA: ExtendedJsonSchema = {
   type: 'object',
   properties: {
-    title: { type: 'string' },
+    title: { type: 'string', minLength: 1 },
     subtitle: { type: 'string' },
     filename: { type: 'string' },
     slides: {},

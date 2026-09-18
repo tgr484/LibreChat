@@ -7,9 +7,9 @@ import type {
   PresentationTable,
 } from './types';
 import { BRAND_ACCENT, BRAND_LOGO_PNG } from './brand';
+import { PPTX_MIME_TYPE } from '~/files/mime';
 
-export const PPTX_MIME_TYPE =
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+export { PPTX_MIME_TYPE };
 
 /**
  * Minimalist theme: white slides, one muted accent, a single sans-serif face.
@@ -152,27 +152,45 @@ function defineMasters(pptx: PptxGenJS, footer: string): void {
   });
 }
 
-function addTitle(slide: PptxGenJS.Slide, title: string): void {
-  slide.addText(title, {
-    x: PAGE.margin,
-    y: 0.45,
-    w: CONTENT_WIDTH,
-    h: 0.85,
-    fontFace: THEME.font,
-    fontSize: title.length > 60 ? 24 : 28,
-    bold: true,
-    color: THEME.text,
-    valign: 'bottom',
-    fit: 'shrink',
-  });
+/** The accent bar every heading (body title, title slide, section slide) sits against. */
+function addAccentBar(slide: PptxGenJS.Slide, box: { y: number; w: number; h: number }): void {
   slide.addShape('rect', {
     x: PAGE.margin + TEXT_INSET,
-    y: 1.34,
-    w: 0.8,
-    h: 0.06,
+    ...box,
     fill: { color: THEME.accent },
     line: { color: THEME.accent, width: 0 },
   });
+}
+
+/** A bold heading in the theme font; callers vary only geometry, size and vertical anchor. */
+function addHeading(
+  slide: PptxGenJS.Slide,
+  text: string,
+  box: { y: number; h: number },
+  options: { fontSize: number; valign: 'top' | 'bottom' },
+): void {
+  slide.addText(text, {
+    x: PAGE.margin,
+    y: box.y,
+    w: CONTENT_WIDTH,
+    h: box.h,
+    fontFace: THEME.font,
+    fontSize: options.fontSize,
+    bold: true,
+    color: THEME.text,
+    valign: options.valign,
+    fit: 'shrink',
+  });
+}
+
+function addTitle(slide: PptxGenJS.Slide, title: string): void {
+  addHeading(
+    slide,
+    title,
+    { y: 0.45, h: 0.85 },
+    { fontSize: title.length > 60 ? 24 : 28, valign: 'bottom' },
+  );
+  addAccentBar(slide, { y: 1.34, w: 0.8, h: 0.06 });
 }
 
 function addSources(slide: PptxGenJS.Slide, sources: readonly string[] | undefined): number {
@@ -311,6 +329,7 @@ function renderContent(
       x: PAGE.margin,
       y: BODY_TOP + 0.1,
       w: CONTENT_WIDTH,
+      h: bottom - BODY_TOP - 0.1,
       colW: columnWidths(spec.table),
       fontFace: THEME.font,
       fontSize: tableFontSize(spec.table),
@@ -336,26 +355,13 @@ function addTitleSlide(pptx: PptxGenJS, spec: PresentationSpec): void {
     line: { color: BRAND_ACCENT, width: 0 },
   });
   slide.addImage({ ...LOGO, data: BRAND_LOGO_PNG });
-  slide.addShape('rect', {
-    x: PAGE.margin + TEXT_INSET,
-    y: 2.35,
-    w: 1.1,
-    h: 0.08,
-    fill: { color: THEME.accent },
-    line: { color: THEME.accent, width: 0 },
-  });
-  slide.addText(spec.title, {
-    x: PAGE.margin,
-    y: 2.6,
-    w: CONTENT_WIDTH,
-    h: 1.6,
-    fontFace: THEME.font,
-    fontSize: spec.title.length > 70 ? 32 : 40,
-    bold: true,
-    color: THEME.text,
-    valign: 'top',
-    fit: 'shrink',
-  });
+  addAccentBar(slide, { y: 2.35, w: 1.1, h: 0.08 });
+  addHeading(
+    slide,
+    spec.title,
+    { y: 2.6, h: 1.6 },
+    { fontSize: spec.title.length > 70 ? 32 : 40, valign: 'top' },
+  );
   if (spec.subtitle) {
     slide.addText(spec.subtitle, {
       x: PAGE.margin,
@@ -373,26 +379,8 @@ function addTitleSlide(pptx: PptxGenJS, spec: PresentationSpec): void {
 
 function addSectionSlide(pptx: PptxGenJS, spec: PresentationSlide): PptxGenJS.Slide {
   const slide = pptx.addSlide({ masterName: SECTION_MASTER });
-  slide.addShape('rect', {
-    x: PAGE.margin + TEXT_INSET,
-    y: 3.05,
-    w: 0.8,
-    h: 0.06,
-    fill: { color: THEME.accent },
-    line: { color: THEME.accent, width: 0 },
-  });
-  slide.addText(spec.title, {
-    x: PAGE.margin,
-    y: 3.25,
-    w: CONTENT_WIDTH,
-    h: 1.2,
-    fontFace: THEME.font,
-    fontSize: 34,
-    bold: true,
-    color: THEME.text,
-    valign: 'top',
-    fit: 'shrink',
-  });
+  addAccentBar(slide, { y: 3.05, w: 0.8, h: 0.06 });
+  addHeading(slide, spec.title, { y: 3.25, h: 1.2 }, { fontSize: 34, valign: 'top' });
   const [lead] = spec.bullets ?? [];
   if (lead) {
     slide.addText(lead, {

@@ -1,5 +1,6 @@
 import yauzl from 'yauzl';
 import { excelMimeTypes, megabyte } from 'librechat-data-provider';
+import { PPTX_MIME_TYPE, POTX_MIME_TYPE } from '../mime';
 import { tryLibreOfficePreview } from './libreoffice';
 import { assertSafeZipSize } from './zipSafety';
 
@@ -1500,8 +1501,8 @@ export const _internal: {
  * ============================================================================= */
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-const POTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.template';
+const PPTX_MIME = PPTX_MIME_TYPE;
+const POTX_MIME = POTX_MIME_TYPE;
 const ODS_MIME = 'application/vnd.oasis.opendocument.spreadsheet';
 const CSV_MIME_PATTERN = /^(text\/csv|application\/csv|text\/comma-separated-values)$/i;
 

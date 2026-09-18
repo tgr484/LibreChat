@@ -262,6 +262,10 @@ async function tryFastRead(
   if (llm.contextTokens == null) {
     return null;
   }
+  const spent = budget.exhausted();
+  if (budget.inReduceWindow() || spent.http || spent.llm || budget.signal.aborted) {
+    return null;
+  }
 
   const settled = await mapWithConcurrency(
     outline.chapters,

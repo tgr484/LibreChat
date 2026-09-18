@@ -5,6 +5,7 @@ import type {
   PresentationSpec,
   PresentationTable,
 } from './types';
+import { parseIfJsonLike } from '~/utils/common';
 
 /**
  * What a model actually sends. Local models (Qwen among them) regularly pass a
@@ -43,21 +44,7 @@ type JsonObject = { [key: string]: unknown };
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Parses a JSON-looking string; anything else comes back unchanged. */
-function unwrap(value: unknown): unknown {
-  if (typeof value !== 'string') {
-    return value;
-  }
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
-    return value;
-  }
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-}
+const unwrap = parseIfJsonLike;
 
 const text = (value: unknown): string | undefined => {
   if (typeof value === 'string') {

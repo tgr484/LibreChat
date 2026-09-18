@@ -17,6 +17,12 @@ const SHARP_FORMAT_MIME_TYPES: Readonly<Record<string, string>> = {
   webp: 'image/webp',
 };
 
+/** Canonical Office Open XML presentation media types, shared by the pptx builder, the office-preview dispatcher, and the code-tool classifier. */
+export const PPTX_MIME_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+export const POTX_MIME_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.template';
+
 export type EncodedImageMetadata = Pick<Metadata, 'format' | 'compression'>;
 
 /**

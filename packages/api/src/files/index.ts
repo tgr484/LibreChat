@@ -8,6 +8,7 @@ export * from './extract';
 export * from './documents/crud';
 export * from './encode';
 export * from './filter';
+export * from './generated';
 export * from './mime';
 export * from './mistral/crud';
 export * from './ocr';

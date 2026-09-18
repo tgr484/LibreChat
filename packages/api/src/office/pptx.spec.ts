@@ -56,6 +56,35 @@ describe('buildPresentation', () => {
     expect(slides[4]).toContain('<a:tbl>');
   });
 
+  it('keeps a table with sources above the sources line, like the other layouts', async () => {
+    const tableWithSources: PresentationSpec = {
+      title: spec.title,
+      slides: [
+        {
+          layout: 'table',
+          title: 'Результаты',
+          sources: ['№3 «Испытания турбодетандера», с. 41'],
+          table: {
+            header: ['Документ', 'КПД, %'],
+            rows: Array.from({ length: 12 }, (_, index) => [`№${index}`, '84']),
+          },
+        },
+      ],
+    };
+    const buffer = await buildPresentation(tableWithSources);
+    const [, slide] = await slideXml(buffer);
+
+    const frame =
+      /<p:graphicFrame>[\s\S]*?<a:off x="\d+" y="(\d+)"\/><a:ext cx="\d+" cy="(\d+)"\/>/.exec(
+        slide,
+      );
+    expect(frame).not.toBeNull();
+    const [, offY, extCy] = frame as unknown as [string, string, string];
+    /** 1 inch = 914400 EMU; the sources line starts at 6.35 in (SOURCES_TOP). */
+    const tableBottomInches = (Number(offY) + Number(extCy)) / 914400;
+    expect(tableBottomInches).toBeLessThanOrEqual(6.35);
+  });
+
   it('keeps speaker notes off the slide', async () => {
     const buffer = await buildPresentation(spec);
     const zip = await JSZip.loadAsync(buffer);
