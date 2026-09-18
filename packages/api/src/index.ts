@@ -93,6 +93,8 @@ export * from './storage';
 export * from './tools';
 /* DocHub */
 export * from './dochub';
+/* Office files */
+export * from './office';
 /* web search */
 export * from './web';
 /* Langfuse */

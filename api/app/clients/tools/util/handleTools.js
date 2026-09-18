@@ -18,6 +18,7 @@ const {
   buildImageToolContext,
   createDochubTools,
   buildDochubToolContext,
+  createPresentationTool,
   SET_MEMORY_TOOL_NAME,
   buildWebSearchContext,
   DELETE_MEMORY_TOOL_NAME,
@@ -65,6 +66,7 @@ const { getMCPRequestContext } = require('~/server/services/MCPRequestContext');
 const { createOpenIDSessionTokenProvider } = require('~/server/services/OpenIDSessionRefresh');
 const { createFileSearchTool, primeFiles: primeSearchFiles } = require('./fileSearch');
 const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/process');
+const { saveGeneratedFile } = require('~/server/services/Files/generated');
 const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools, checkCapability } = require('~/server/services/Config');
@@ -245,6 +247,11 @@ const loadTools = async ({
       }
       return dochubTools;
     },
+    create_presentation: async () => [
+      createPresentationTool({
+        saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
+      }),
+    ],
     image_gen_oai: async (_toolContextMap, dynamicToolContextMap) => {
       const authFields = getAuthFields('image_gen_oai');
       const authValues = await loadAuthValues({ userId: user, authFields });

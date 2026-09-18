@@ -48,3 +48,24 @@ describe('loadAndFormatTools — DocHub', () => {
     }
   });
 });
+
+describe('loadAndFormatTools — create_presentation', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tools-'));
+
+  afterAll(() => {
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('lists the presentation tool without any integration config', () => {
+    const tools = loadAndFormatTools({ directory });
+
+    expect(tools.create_presentation.function.name).toBe('create_presentation');
+    expect(tools.create_presentation.function.parameters.required).toEqual(['title', 'slides']);
+  });
+
+  it('lets the admin filter it out', () => {
+    const tools = loadAndFormatTools({ directory, adminFilter: ['create_presentation'] });
+
+    expect(tools).not.toHaveProperty('create_presentation');
+  });
+});
