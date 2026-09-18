@@ -8,6 +8,7 @@ const { Tools, ImageVisionTool } = require('librechat-data-provider');
 const {
   getToolkitKey,
   oaiToolkit,
+  dochubToolkit,
   geminiToolkit,
   createAskUserQuestionTool,
 } = require('@librechat/api');
@@ -25,9 +26,15 @@ const { toolkits } = require('~/app/clients/tools/manifest');
  * @param {string} params.directory - The directory path where the tools are located.
  * @param {Array<string>} [params.adminFilter=[]] - Array of admin-defined tool keys to exclude from loading.
  * @param {Array<string>} [params.adminIncluded=[]] - Array of admin-defined tool keys to include from loading.
+ * @param {boolean} [params.dochubEnabled=false] - Whether the DocHub integration is configured; its tools are omitted otherwise.
  * @returns {Record<string, FunctionTool>} An object mapping each tool's plugin key to its instance.
  */
-function loadAndFormatTools({ directory, adminFilter = [], adminIncluded = [] }) {
+function loadAndFormatTools({
+  directory,
+  adminFilter = [],
+  adminIncluded = [],
+  dochubEnabled = false,
+}) {
   const filter = new Set([...adminFilter]);
   const included = new Set(adminIncluded);
   const tools = [];
@@ -90,6 +97,7 @@ function loadAndFormatTools({ directory, adminFilter = [], adminIncluded = [] })
     createAskUserQuestionTool(),
     ...Object.values(oaiToolkit),
     ...Object.values(geminiToolkit),
+    ...(dochubEnabled ? Object.values(dochubToolkit) : []),
   ];
   for (const toolInstance of basicToolInstances) {
     const formattedTool = formatToOpenAIAssistantTool(toolInstance);

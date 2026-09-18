@@ -4,6 +4,7 @@ import type {
   TFileConfig,
   TAzureConfig,
   TCustomConfig,
+  TDochubConfig,
   TMemoryConfig,
   EModelEndpoint,
   TVertexAIConfig,
@@ -60,6 +61,8 @@ export interface AppConfig {
   };
   /** Memory configuration */
   memory?: TMemoryConfig;
+  /** DocHub integration configuration */
+  dochub?: TDochubConfig;
   /** Summarization configuration */
   summarization?: SummarizationConfig;
   /** Web search configuration */

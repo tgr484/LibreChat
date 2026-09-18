@@ -91,6 +91,8 @@ export * from './images';
 export * from './storage';
 /* Tools */
 export * from './tools';
+/* DocHub */
+export * from './dochub';
 /* web search */
 export * from './web';
 /* Langfuse */

@@ -1,4 +1,5 @@
 export * from './agents';
+export * from './dochub';
 export * from './interface';
 export * from './memory';
 export * from './service';

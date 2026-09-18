@@ -16,6 +16,8 @@ const {
   buildInlineMemoryTool,
   getCodeApiAuthHeaders,
   buildImageToolContext,
+  createDochubTools,
+  buildDochubToolContext,
   SET_MEMORY_TOOL_NAME,
   buildWebSearchContext,
   DELETE_MEMORY_TOOL_NAME,
@@ -67,7 +69,14 @@ const { getUserPluginAuthValue } = require('~/server/services/PluginService');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools, checkCapability } = require('~/server/services/Config');
 const { getMCPServersRegistry } = require('~/config');
-const { getRoleByName, setMemory, deleteMemory, getFormattedMemories } = require('~/models');
+const {
+  getUserKey,
+  setMemory,
+  deleteMemory,
+  getRoleByName,
+  getUserKeyValues,
+  getFormattedMemories,
+} = require('~/models');
 
 /**
  * Validates the availability and authentication of tools for a user based on environment variables or user-specific plugin authentication values.
@@ -220,6 +229,22 @@ const loadTools = async ({
   };
 
   const customConstructors = {
+    /**
+     * DocHub tools read documents and condense them with their own LLM calls,
+     * so they need the request (identity, config) and the run's abort signal.
+     */
+    dochub: async (toolContextMap) => {
+      const dochubTools = createDochubTools({
+        req: options.req,
+        signal,
+        agent,
+        db: { getUserKey, getUserKeyValues },
+      });
+      if (dochubTools.length > 0) {
+        toolContextMap.dochub = buildDochubToolContext();
+      }
+      return dochubTools;
+    },
     image_gen_oai: async (_toolContextMap, dynamicToolContextMap) => {
       const authFields = getAuthFields('image_gen_oai');
       const authValues = await loadAuthValues({ userId: user, authFields });
@@ -606,9 +631,12 @@ const loadTools = async ({
   }
 
   const toolPromises = [];
+  /** Toolkit children share their parent's loader; loading it once avoids duplicate tools. */
+  const scheduledLoaders = new Set();
   for (const tool of tools) {
     const validTool = requestedTools[tool];
-    if (validTool) {
+    if (validTool && !scheduledLoaders.has(validTool)) {
+      scheduledLoaders.add(validTool);
       toolPromises.push(
         validTool().catch((error) => {
           logger.error(`Error loading tool ${tool}:`, error);

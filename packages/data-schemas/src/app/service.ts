@@ -20,6 +20,7 @@ import { loadDefaultInterface } from './interface';
 import { loadTurnstileConfig } from './turnstile';
 import { agentsConfigSetup } from './agents';
 import { loadWebSearchConfig } from './web';
+import { loadDochubConfig } from './dochub';
 import { processModelSpecs } from './specs';
 import { loadEndpoints } from './endpoints';
 import { loadOCRConfig } from './ocr';
@@ -137,6 +138,7 @@ export const AppService = async (params?: {
   const ocr = loadOCRConfig(config.ocr);
   const webSearch = loadWebSearchConfig(config.webSearch);
   const memory = loadMemoryConfig(config.memory);
+  const dochub = loadDochubConfig(config.dochub);
   const summarization = loadSummarizationConfig(config);
   const skillSync = loadSkillSyncConfig(config);
   const filteredTools = config.filteredTools;
@@ -175,6 +177,7 @@ export const AppService = async (params?: {
     paths,
     config,
     memory,
+    dochub,
     speech,
     actions,
     balance,
