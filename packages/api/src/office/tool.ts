@@ -2,14 +2,15 @@ import { logger } from '@librechat/data-schemas';
 import { tool } from '@librechat/agents/langchain/tools';
 import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import type { IMongoFile } from '@librechat/data-schemas';
-import type { PresentationColumn, PresentationSlide, PresentationSpec } from './types';
+import type { DocxSpec, PresentationColumn, PresentationSlide, PresentationSpec } from './types';
+import type { RawDocumentInput, RawPresentationInput } from './input';
 import type { ExtendedJsonSchema } from '~/tools/registry/schema';
-import type { RawPresentationInput } from './input';
+import { parseDocumentInput, parsePresentationInput } from './input';
 import { bufferToOfficeHtml } from '~/files/documents/html';
 import { buildPresentation, PPTX_MIME_TYPE } from './pptx';
 import { officeToolkit } from '~/tools/toolkits/office';
+import { buildDocument, DOCX_MIME_TYPE } from './docx';
 import { sanitizeFilename } from '~/utils/files';
-import { parsePresentationInput } from './input';
 
 /**
  * Artifact key for files a tool has already persisted. The tool-end callback
@@ -75,11 +76,15 @@ export const presentationFilename = (spec: PresentationSpec): string => {
   return sanitizeFilename(`${stem || 'presentation'}.pptx`);
 };
 
-async function renderPreview(buffer: Buffer, filename: string): Promise<string | null> {
+async function renderPreview(
+  buffer: Buffer,
+  filename: string,
+  mimeType: string,
+): Promise<string | null> {
   try {
-    return await bufferToOfficeHtml(buffer, filename, PPTX_MIME_TYPE);
+    return await bufferToOfficeHtml(buffer, filename, mimeType);
   } catch (error) {
-    logger.warn('[create_presentation] preview rendering failed', error);
+    logger.warn('[office] preview rendering failed', error);
     return null;
   }
 }
@@ -121,7 +126,7 @@ export function createPresentationTool({
       const filename = presentationFilename(spec);
       try {
         const buffer = await buildPresentation(spec);
-        const text = await renderPreview(buffer, filename);
+        const text = await renderPreview(buffer, filename, PPTX_MIME_TYPE);
         const file = await saveFile({
           buffer,
           filename,
@@ -142,6 +147,70 @@ export function createPresentationTool({
       name: definition.name,
       description: definition.description,
       schema: EXECUTION_SCHEMA,
+      responseFormat: definition.responseFormat,
+    },
+  ) as DynamicStructuredTool;
+}
+
+export const documentFilename = (spec: DocxSpec): string => {
+  const stem = (spec.filename || spec.title)
+    .replace(/\.docx?$/i, '')
+    .replace(/\s+/g, '_')
+    .slice(0, FILENAME_STEM_MAX);
+  return sanitizeFilename(`${stem || 'document'}.docx`);
+};
+
+const describeDocument = (spec: DocxSpec, filename: string): string =>
+  `Документ «${spec.title}» создан. Файл ${filename} прикреплён к ответу — пользователь скачает его из карточки файла. Не пересказывай текст документа целиком: кратко скажи, что в нём, и напомни проверить данные и подписать.`;
+
+/** `blocks` may arrive stringified, so it is checked by `parseDocumentInput`. */
+const DOCUMENT_EXECUTION_SCHEMA: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', minLength: 1 },
+    filename: { type: 'string' },
+    blocks: {},
+  },
+  required: ['title', 'blocks'],
+};
+
+export interface CreateDocumentToolParams {
+  saveFile: SaveGeneratedFile;
+}
+
+export function createDocumentTool({ saveFile }: CreateDocumentToolParams): DynamicStructuredTool {
+  const definition = officeToolkit.create_document;
+  return tool(
+    async (input: RawDocumentInput): Promise<[string, GeneratedFilesArtifact]> => {
+      const parsed = parseDocumentInput(input);
+      if (!parsed.ok) {
+        return [parsed.error, {}];
+      }
+      const { spec } = parsed;
+      const filename = documentFilename(spec);
+      try {
+        const buffer = await buildDocument(spec);
+        const text = await renderPreview(buffer, filename, DOCX_MIME_TYPE);
+        const file = await saveFile({
+          buffer,
+          filename,
+          type: DOCX_MIME_TYPE,
+          text,
+          textFormat: text == null ? null : 'html',
+        });
+        return [describeDocument(spec, filename), { [GENERATED_FILES_ARTIFACT_KEY]: [file] }];
+      } catch (error) {
+        logger.error('[create_document] failed to build the document', error);
+        return [
+          'Не удалось создать документ из-за ошибки на сервере. Сообщи пользователю, что файл не создан, и предложи повторить позже.',
+          {},
+        ];
+      }
+    },
+    {
+      name: definition.name,
+      description: definition.description,
+      schema: DOCUMENT_EXECUTION_SCHEMA,
       responseFormat: definition.responseFormat,
     },
   ) as DynamicStructuredTool;

@@ -1,4 +1,7 @@
 import type {
+  DocxAlign,
+  DocxBlock,
+  DocxSpec,
   PresentationColumn,
   PresentationLayout,
   PresentationSlide,
@@ -155,4 +158,99 @@ export function parsePresentationInput(input: RawPresentationInput): Presentatio
       slides: parsed,
     },
   };
+}
+
+export interface RawDocumentInput {
+  title: string;
+  filename?: string;
+  blocks: unknown;
+}
+
+export type DocumentParseResult = { ok: true; spec: DocxSpec } | { ok: false; error: string };
+
+export const DOCUMENT_LIMITS = { blocks: 200, items: 50, columns: 8, rows: 100 } as const;
+
+const ALIGNS: ReadonlySet<DocxAlign> = new Set(['left', 'center', 'right', 'justify']);
+
+const align = (value: unknown): DocxAlign | undefined => {
+  const name = text(value) as DocxAlign | undefined;
+  return name && ALIGNS.has(name) ? name : undefined;
+};
+
+const flag = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return value === 'true' ? true : undefined;
+};
+
+function block(value: unknown): DocxBlock | undefined {
+  const unwrapped = unwrap(value);
+  if (!isObject(unwrapped)) {
+    return undefined;
+  }
+  const content = text(unwrapped.text);
+  switch (text(unwrapped.type)) {
+    case 'heading': {
+      const level = Number(unwrapped.level);
+      return content?.trim()
+        ? {
+            type: 'heading',
+            text: content,
+            level: level === 2 || level === 3 ? level : 1,
+            align: align(unwrapped.align),
+          }
+        : undefined;
+    }
+    case 'paragraph':
+      return content != null
+        ? {
+            type: 'paragraph',
+            text: content,
+            align: align(unwrapped.align),
+            bold: flag(unwrapped.bold),
+            italic: flag(unwrapped.italic),
+          }
+        : undefined;
+    case 'list': {
+      const items = lines(unwrapped.items, DOCUMENT_LIMITS.items);
+      return items.length > 0
+        ? { type: 'list', items, ordered: flag(unwrapped.ordered) }
+        : undefined;
+    }
+    case 'table': {
+      const parsed = table(unwrapped);
+      return parsed ? { type: 'table', ...parsed } : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Accepts the model's arguments in whatever shape they arrived and returns the
+ * document, or an instruction the model can act on. An unrecognised block is
+ * dropped rather than failing the whole document.
+ */
+export function parseDocumentInput(input: RawDocumentInput): DocumentParseResult {
+  const blocks = unwrap(input.blocks);
+  if (!Array.isArray(blocks)) {
+    return {
+      ok: false,
+      error:
+        'Параметр blocks должен быть массивом блоков, например [{"type": "paragraph", "text": "…"}]. Повтори вызов.',
+    };
+  }
+  const parsed = blocks
+    .slice(0, DOCUMENT_LIMITS.blocks)
+    .map(block)
+    .filter((entry): entry is DocxBlock => entry != null);
+  if (parsed.length === 0) {
+    return {
+      ok: false,
+      error:
+        'В blocks нет ни одного корректного блока (type: heading, paragraph, list или table). Повтори вызов.',
+    };
+  }
+  return { ok: true, spec: { title: input.title, filename: input.filename, blocks: parsed } };
 }

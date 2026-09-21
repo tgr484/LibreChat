@@ -991,6 +991,19 @@ describe('Tool Handlers', () => {
     });
   });
 
+  describe('create_document', () => {
+    it('loads the document tool with the artifact response format', async () => {
+      const { loadedTools } = await loadTools({
+        user: fakeUser._id.toString(),
+        tools: ['create_document'],
+        options: { req: { user: { id: fakeUser._id.toString() }, config: {} } },
+      });
+
+      expect(loadedTools.map((tool) => tool.name)).toEqual(['create_document']);
+      expect(loadedTools[0].responseFormat).toBe('content_and_artifact');
+    });
+  });
+
   describe('DocHub toolkit', () => {
     const DOCHUB_TOOLS = ['dochub', 'dochub_search', 'dochub_read', 'dochub_survey'];
     let keyDir;

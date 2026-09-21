@@ -22,6 +22,8 @@ export const PPTX_MIME_TYPE =
   'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 export const POTX_MIME_TYPE =
   'application/vnd.openxmlformats-officedocument.presentationml.template';
+export const DOCX_MIME_TYPE =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export type EncodedImageMetadata = Pick<Metadata, 'format' | 'compression'>;
 

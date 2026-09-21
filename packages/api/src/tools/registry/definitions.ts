@@ -460,6 +460,13 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     toolType: 'builtin',
     responseFormat: officeToolkit.create_presentation.responseFormat,
   },
+  create_document: {
+    name: officeToolkit.create_document.name,
+    description: officeToolkit.create_document.description,
+    schema: officeToolkit.create_document.schema,
+    toolType: 'builtin',
+    responseFormat: officeToolkit.create_document.responseFormat,
+  },
 };
 
 /**

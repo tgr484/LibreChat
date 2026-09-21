@@ -31,3 +31,41 @@ export interface PresentationSpec {
   slides: PresentationSlide[];
   filename?: string;
 }
+
+export type DocxAlign = 'left' | 'center' | 'right' | 'justify';
+
+export interface DocxHeading {
+  type: 'heading';
+  text: string;
+  level?: 1 | 2 | 3;
+  align?: DocxAlign;
+}
+
+export interface DocxParagraph {
+  type: 'paragraph';
+  text: string;
+  align?: DocxAlign;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+export interface DocxList {
+  type: 'list';
+  items: string[];
+  ordered?: boolean;
+}
+
+export interface DocxTable {
+  type: 'table';
+  header: string[];
+  rows: string[][];
+}
+
+export type DocxBlock = DocxHeading | DocxParagraph | DocxList | DocxTable;
+
+/** What the model passes to `create_document`. */
+export interface DocxSpec {
+  title: string;
+  blocks: DocxBlock[];
+  filename?: string;
+}
