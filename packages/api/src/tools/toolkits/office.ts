@@ -30,6 +30,14 @@ const DEFAULT_DOCUMENT_DESCRIPTION = `Создаёт документ Word (.doc
 
 Вызывай инструмент один раз с полным документом. После вызова не пересказывай текст целиком — кратко скажи, что в файле, и попроси проверить данные.`;
 
+const DEFAULT_SPREADSHEET_DESCRIPTION = `Создаёт таблицу Excel (.xlsx) и прикрепляет файл к ответу. Ширину столбцов подбирает сервер — передавай только данные.
+
+Таблица состоит из листов (sheets). У листа: name (до 31 символа), header — заголовки столбцов, rows — строки, каждая строка — массив ячеек. Ячейка — строка, число или true/false; пустую ячейку оставь пустой строкой. Числа передавай числами, а не текстом, чтобы по ним можно было считать и сортировать.
+
+Формула — строка, начинающаяся с «=», в английской записи: «=SUM(B2:B10)», «=B2*C2». Ссылки на ячейки считай с учётом заголовка: он занимает строку 1, первая строка данных — строка 2.
+
+Вызывай инструмент один раз со всеми листами. После вызова не пересказывай данные — кратко скажи, что в таблице.`;
+
 const describe = (variable: string, fallback: string): string => process.env[variable] || fallback;
 
 const bulletsProperty = (description: string): ExtendedJsonSchema => ({
@@ -186,6 +194,51 @@ const documentSchema: ExtendedJsonSchema = {
   required: ['title', 'blocks'],
 };
 
+const spreadsheetSchema: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+      description: 'Название таблицы: имя файла по умолчанию.',
+    },
+    sheets: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 10,
+      description: 'Листы книги по порядку.',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Название листа, до 31 символа.' },
+          header: {
+            type: 'array',
+            maxItems: 40,
+            items: { type: 'string' },
+            description: 'Заголовки столбцов.',
+          },
+          rows: {
+            type: 'array',
+            maxItems: 1000,
+            description: 'Строки данных; каждая строка — массив ячеек.',
+            items: {
+              type: 'array',
+              maxItems: 40,
+              items: {},
+            },
+          },
+        },
+        required: ['name', 'rows'],
+      },
+    },
+    filename: {
+      type: 'string',
+      description: 'Необязательно: имя файла без расширения. По умолчанию — title.',
+    },
+  },
+  required: ['title', 'sheets'],
+};
+
 export interface OfficeToolDefinition {
   readonly name: string;
   readonly description: string;
@@ -196,6 +249,7 @@ export interface OfficeToolDefinition {
 export const officeToolkit: {
   readonly create_presentation: OfficeToolDefinition;
   readonly create_document: OfficeToolDefinition;
+  readonly create_spreadsheet: OfficeToolDefinition;
 } = {
   create_presentation: {
     name: 'create_presentation',
@@ -209,4 +263,17 @@ export const officeToolkit: {
     schema: documentSchema,
     responseFormat: 'content_and_artifact' as const,
   },
+  create_spreadsheet: {
+    name: 'create_spreadsheet',
+    description: describe('CREATE_SPREADSHEET_DESCRIPTION', DEFAULT_SPREADSHEET_DESCRIPTION),
+    schema: spreadsheetSchema,
+    responseFormat: 'content_and_artifact' as const,
+  },
 } as const;
+
+/** Tools equipped together by the chat's Office documents toggle and a spec's `office` flag. */
+export const OFFICE_TOOL_NAMES: readonly string[] = [
+  officeToolkit.create_document.name,
+  officeToolkit.create_presentation.name,
+  officeToolkit.create_spreadsheet.name,
+];

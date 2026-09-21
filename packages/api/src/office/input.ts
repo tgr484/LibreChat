@@ -2,6 +2,9 @@ import type {
   DocxAlign,
   DocxBlock,
   DocxSpec,
+  SheetCell,
+  SheetSpec,
+  SpreadsheetSpec,
   PresentationColumn,
   PresentationLayout,
   PresentationSlide,
@@ -253,4 +256,87 @@ export function parseDocumentInput(input: RawDocumentInput): DocumentParseResult
     };
   }
   return { ok: true, spec: { title: input.title, filename: input.filename, blocks: parsed } };
+}
+
+export interface RawSpreadsheetInput {
+  title: string;
+  filename?: string;
+  sheets: unknown;
+}
+
+export type SpreadsheetParseResult =
+  | { ok: true; spec: SpreadsheetSpec }
+  | { ok: false; error: string };
+
+export const SPREADSHEET_LIMITS = { sheets: 10, rows: 1000, columns: 40 } as const;
+
+const NUMERIC = /^-?\d+(?:[.,]\d+)?$/;
+
+/** Models send numbers as strings; a plain numeric string becomes a real number so it sums and sorts. */
+const cell = (value: unknown): SheetCell => {
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return NUMERIC.test(trimmed) ? Number(trimmed.replace(',', '.')) : value;
+};
+
+const row = (value: unknown): SheetCell[] | undefined => {
+  const unwrapped = unwrap(value);
+  return Array.isArray(unwrapped)
+    ? unwrapped.slice(0, SPREADSHEET_LIMITS.columns).map(cell)
+    : undefined;
+};
+
+function sheet(value: unknown, index: number): SheetSpec | undefined {
+  const unwrapped = unwrap(value);
+  if (!isObject(unwrapped)) {
+    return undefined;
+  }
+  const rows = unwrap(unwrapped.rows);
+  const header = lines(unwrapped.header, SPREADSHEET_LIMITS.columns);
+  const parsedRows = Array.isArray(rows)
+    ? rows
+        .slice(0, SPREADSHEET_LIMITS.rows)
+        .map(row)
+        .filter((entry): entry is SheetCell[] => entry != null)
+    : [];
+  if (header.length === 0 && parsedRows.length === 0) {
+    return undefined;
+  }
+  return {
+    name: text(unwrapped.name) ?? `Лист${index + 1}`,
+    header: header.length > 0 ? header : undefined,
+    rows: parsedRows,
+  };
+}
+
+/**
+ * Accepts the model's arguments in whatever shape they arrived and returns the
+ * workbook, or an instruction the model can act on. An empty sheet is dropped
+ * rather than failing the whole workbook.
+ */
+export function parseSpreadsheetInput(input: RawSpreadsheetInput): SpreadsheetParseResult {
+  const sheets = unwrap(input.sheets);
+  if (!Array.isArray(sheets)) {
+    return {
+      ok: false,
+      error:
+        'Параметр sheets должен быть массивом листов, например [{"name": "Данные", "header": ["A", "B"], "rows": [[1, 2]]}]. Повтори вызов.',
+    };
+  }
+  const parsed = sheets
+    .slice(0, SPREADSHEET_LIMITS.sheets)
+    .map(sheet)
+    .filter((entry): entry is SheetSpec => entry != null);
+  if (parsed.length === 0) {
+    return {
+      ok: false,
+      error: 'В sheets нет ни одного листа с данными (header или rows). Повтори вызов.',
+    };
+  }
+  return { ok: true, spec: { title: input.title, filename: input.filename, sheets: parsed } };
 }

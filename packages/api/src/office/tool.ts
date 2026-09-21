@@ -2,12 +2,19 @@ import { logger } from '@librechat/data-schemas';
 import { tool } from '@librechat/agents/langchain/tools';
 import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import type { IMongoFile } from '@librechat/data-schemas';
-import type { DocxSpec, PresentationColumn, PresentationSlide, PresentationSpec } from './types';
-import type { RawDocumentInput, RawPresentationInput } from './input';
+import type {
+  DocxSpec,
+  PresentationColumn,
+  PresentationSlide,
+  PresentationSpec,
+  SpreadsheetSpec,
+} from './types';
+import type { RawDocumentInput, RawPresentationInput, RawSpreadsheetInput } from './input';
 import type { ExtendedJsonSchema } from '~/tools/registry/schema';
-import { parseDocumentInput, parsePresentationInput } from './input';
+import { parseDocumentInput, parsePresentationInput, parseSpreadsheetInput } from './input';
 import { bufferToOfficeHtml } from '~/files/documents/html';
 import { buildPresentation, PPTX_MIME_TYPE } from './pptx';
+import { buildSpreadsheet, XLSX_MIME_TYPE } from './sheet';
 import { officeToolkit } from '~/tools/toolkits/office';
 import { buildDocument, DOCX_MIME_TYPE } from './docx';
 import { sanitizeFilename } from '~/utils/files';
@@ -211,6 +218,72 @@ export function createDocumentTool({ saveFile }: CreateDocumentToolParams): Dyna
       name: definition.name,
       description: definition.description,
       schema: DOCUMENT_EXECUTION_SCHEMA,
+      responseFormat: definition.responseFormat,
+    },
+  ) as DynamicStructuredTool;
+}
+
+export const spreadsheetFilename = (spec: SpreadsheetSpec): string => {
+  const stem = (spec.filename || spec.title)
+    .replace(/\.xlsx?$/i, '')
+    .replace(/\s+/g, '_')
+    .slice(0, FILENAME_STEM_MAX);
+  return sanitizeFilename(`${stem || 'table'}.xlsx`);
+};
+
+const describeSpreadsheet = (spec: SpreadsheetSpec, filename: string): string =>
+  `Таблица «${spec.title}» создана: листов — ${spec.sheets.length}. Файл ${filename} прикреплён к ответу — пользователь скачает его из карточки файла. Не пересказывай данные целиком: кратко скажи, что в таблице.`;
+
+/** `sheets` may arrive stringified, so it is checked by `parseSpreadsheetInput`. */
+const SPREADSHEET_EXECUTION_SCHEMA: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', minLength: 1 },
+    filename: { type: 'string' },
+    sheets: {},
+  },
+  required: ['title', 'sheets'],
+};
+
+export interface CreateSpreadsheetToolParams {
+  saveFile: SaveGeneratedFile;
+}
+
+export function createSpreadsheetTool({
+  saveFile,
+}: CreateSpreadsheetToolParams): DynamicStructuredTool {
+  const definition = officeToolkit.create_spreadsheet;
+  return tool(
+    async (input: RawSpreadsheetInput): Promise<[string, GeneratedFilesArtifact]> => {
+      const parsed = parseSpreadsheetInput(input);
+      if (!parsed.ok) {
+        return [parsed.error, {}];
+      }
+      const { spec } = parsed;
+      const filename = spreadsheetFilename(spec);
+      try {
+        const buffer = await buildSpreadsheet(spec);
+        const text = await renderPreview(buffer, filename, XLSX_MIME_TYPE);
+        const file = await saveFile({
+          buffer,
+          filename,
+          type: XLSX_MIME_TYPE,
+          text,
+          textFormat: text == null ? null : 'html',
+        });
+        return [describeSpreadsheet(spec, filename), { [GENERATED_FILES_ARTIFACT_KEY]: [file] }];
+      } catch (error) {
+        logger.error('[create_spreadsheet] failed to build the workbook', error);
+        return [
+          'Не удалось создать таблицу из-за ошибки на сервере. Сообщи пользователю, что файл не создан, и предложи повторить позже.',
+          {},
+        ];
+      }
+    },
+    {
+      name: definition.name,
+      description: definition.description,
+      schema: SPREADSHEET_EXECUTION_SCHEMA,
       responseFormat: definition.responseFormat,
     },
   ) as DynamicStructuredTool;

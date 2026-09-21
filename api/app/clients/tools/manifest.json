@@ -195,5 +195,12 @@
     "agentsOnly": true,
     "description": "Создание документов Word (.docx): заявления, служебные записки, отчёты",
     "authConfig": []
+  },
+  {
+    "name": "Таблицы Excel",
+    "pluginKey": "create_spreadsheet",
+    "agentsOnly": true,
+    "description": "Создание таблиц Excel (.xlsx) с формулами",
+    "authConfig": []
   }
 ]

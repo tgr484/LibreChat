@@ -20,6 +20,7 @@ const {
   buildDochubToolContext,
   createPresentationTool,
   createDocumentTool,
+  createSpreadsheetTool,
   SET_MEMORY_TOOL_NAME,
   buildWebSearchContext,
   DELETE_MEMORY_TOOL_NAME,
@@ -255,6 +256,11 @@ const loadTools = async ({
     ],
     create_document: async () => [
       createDocumentTool({
+        saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
+      }),
+    ],
+    create_spreadsheet: async () => [
+      createSpreadsheetTool({
         saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
       }),
     ],

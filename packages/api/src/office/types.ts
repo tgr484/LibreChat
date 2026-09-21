@@ -69,3 +69,18 @@ export interface DocxSpec {
   blocks: DocxBlock[];
   filename?: string;
 }
+
+export type SheetCell = string | number | boolean | null;
+
+export interface SheetSpec {
+  name: string;
+  header?: string[];
+  rows: SheetCell[][];
+}
+
+/** What the model passes to `create_spreadsheet`. */
+export interface SpreadsheetSpec {
+  title: string;
+  sheets: SheetSpec[];
+  filename?: string;
+}

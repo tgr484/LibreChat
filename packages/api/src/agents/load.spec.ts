@@ -122,10 +122,11 @@ describe('loadEphemeralAgent office tools', () => {
     );
   };
 
-  test('ignores a client-supplied office flag', async () => {
+  test('equips them from the chat toggle', async () => {
     const agent = await load({ office: true });
-    expect(agent?.tools ?? []).not.toContain('create_document');
-    expect(agent?.tools ?? []).not.toContain('create_presentation');
+    expect(agent?.tools).toEqual(
+      expect.arrayContaining(['create_document', 'create_presentation']),
+    );
   });
 
   test('equips them from a model spec', async () => {

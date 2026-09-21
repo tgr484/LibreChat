@@ -22,6 +22,7 @@ export const PPTX_MIME_TYPE =
   'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 export const POTX_MIME_TYPE =
   'application/vnd.openxmlformats-officedocument.presentationml.template';
+export const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export const DOCX_MIME_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 

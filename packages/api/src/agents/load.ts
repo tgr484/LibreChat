@@ -25,7 +25,7 @@ import { ASK_USER_QUESTION_TOOL_NAME } from '~/agents/hitl/askUserQuestionTool';
 import { synthesizeBackgroundToolOptions } from '~/agents/background';
 import { mergeSynthesizedToolOptions } from '~/agents/selection';
 import { synthesizeIntentToolOptions } from '~/agents/intent';
-import { officeToolkit } from '~/tools/toolkits/office';
+import { OFFICE_TOOL_NAMES } from '~/tools/toolkits/office';
 import { getCustomEndpointConfig } from '~/app/config';
 
 const { mcp_all, mcp_delimiter } = Constants;
@@ -112,8 +112,8 @@ export async function loadEphemeralAgent(
   if (ephemeralAgent?.memory === true || modelSpec?.memory === true) {
     tools.push(Tools.memory);
   }
-  if (modelSpec?.office === true) {
-    tools.push(officeToolkit.create_document.name, officeToolkit.create_presentation.name);
+  if (ephemeralAgent?.office === true || modelSpec?.office === true) {
+    tools.push(...OFFICE_TOOL_NAMES);
   }
   /** Same downstream gating as persisted agents applies: `createRun` only
    *  equips the tool when the request is HITL-capable, the agent is not a

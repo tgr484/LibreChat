@@ -20,6 +20,7 @@ import { ASK_USER_QUESTION_TOOL_NAME } from '~/agents/hitl/askUserQuestionTool';
 import { synthesizeBackgroundToolOptions } from '~/agents/background';
 import { mergeSynthesizedToolOptions } from '~/agents/selection';
 import { synthesizeIntentToolOptions } from '~/agents/intent';
+import { OFFICE_TOOL_NAMES } from '~/tools/toolkits/office';
 import { getCustomEndpointConfig } from '~/app/config';
 
 const { mcp_all, mcp_delimiter } = Constants;
@@ -136,6 +137,7 @@ export async function loadAddedAgent(
         artifacts?: unknown;
         memory?: boolean;
         ask_user_question?: boolean;
+        office?: boolean;
         run_in_background?: boolean;
         describe_intent?: boolean;
       }
@@ -227,6 +229,9 @@ export async function loadAddedAgent(
   }
   if (ephemeralAgent?.memory === true || modelSpec?.memory === true) {
     tools.push(Tools.memory);
+  }
+  if (ephemeralAgent?.office === true || modelSpec?.office === true) {
+    tools.push(...OFFICE_TOOL_NAMES);
   }
   /** Mirror the primary ephemeral loader (`loadEphemeralAgent`) so a model
    *  spec's Ask User flag equips the added top-level agent too; downstream
