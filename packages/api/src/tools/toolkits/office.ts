@@ -143,7 +143,7 @@ const documentSchema: ExtendedJsonSchema = {
     blocks: {
       type: 'array',
       minItems: 1,
-      maxItems: 200,
+      maxItems: 2000,
       description: 'Блоки документа сверху вниз.',
       items: {
         type: 'object',
@@ -164,7 +164,7 @@ const documentSchema: ExtendedJsonSchema = {
           italic: { type: 'boolean', description: 'Курсив paragraph.' },
           items: {
             type: 'array',
-            maxItems: 50,
+            maxItems: 1000,
             items: { type: 'string' },
             description: 'Пункты list без маркеров и номеров.',
           },
@@ -172,14 +172,14 @@ const documentSchema: ExtendedJsonSchema = {
           header: {
             type: 'array',
             minItems: 1,
-            maxItems: 8,
+            maxItems: 30,
             items: { type: 'string' },
             description: 'Заголовки столбцов table.',
           },
           rows: {
             type: 'array',
-            maxItems: 100,
-            items: { type: 'array', maxItems: 8, items: { type: 'string' } },
+            maxItems: 5000,
+            items: { type: 'array', maxItems: 30, items: { type: 'string' } },
             description: 'Строки table; в каждой столько же ячеек, сколько заголовков.',
           },
         },
@@ -205,7 +205,7 @@ const spreadsheetSchema: ExtendedJsonSchema = {
     sheets: {
       type: 'array',
       minItems: 1,
-      maxItems: 10,
+      maxItems: 50,
       description: 'Листы книги по порядку.',
       items: {
         type: 'object',
@@ -213,17 +213,17 @@ const spreadsheetSchema: ExtendedJsonSchema = {
           name: { type: 'string', description: 'Название листа, до 31 символа.' },
           header: {
             type: 'array',
-            maxItems: 40,
+            maxItems: 200,
             items: { type: 'string' },
             description: 'Заголовки столбцов.',
           },
           rows: {
             type: 'array',
-            maxItems: 1000,
+            maxItems: 50000,
             description: 'Строки данных; каждая строка — массив ячеек.',
             items: {
               type: 'array',
-              maxItems: 40,
+              maxItems: 200,
               items: {},
             },
           },

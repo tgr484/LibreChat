@@ -93,11 +93,11 @@ const cell = (text: string, bold: boolean): TableCell =>
 const table = ({ header, rows }: DocxTable): Array<Paragraph | Table> => [
   new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [header, ...rows].map(
+    rows: (header.length > 0 ? [header, ...rows] : rows).map(
       (row, index) =>
         new TableRow({
-          tableHeader: index === 0,
-          children: row.map((text) => cell(text, index === 0)),
+          tableHeader: header.length > 0 && index === 0,
+          children: row.map((text) => cell(text, header.length > 0 && index === 0)),
         }),
     ),
   }),

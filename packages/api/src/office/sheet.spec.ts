@@ -5,9 +5,9 @@ import type { SpreadsheetSpec } from './types';
 import type { GeneratedFile } from './tool';
 import { buildSpreadsheet, sheetNames, XLSX_MIME_TYPE } from './sheet';
 import { createSpreadsheetTool, spreadsheetFilename } from './tool';
+import { parseSpreadsheetInput, SPREADSHEET_LIMITS } from './input';
 import { toolDefinitions } from '~/tools/registry/definitions';
 import { OFFICE_TOOL_NAMES } from '~/tools/toolkits/office';
-import { parseSpreadsheetInput } from './input';
 
 const spec: SpreadsheetSpec = {
   title: 'Отпуска сотрудников',
@@ -103,5 +103,33 @@ describe('create_spreadsheet registration', () => {
     expect(toolDefinitions.create_spreadsheet.toolType).toBe('builtin');
     expect(OFFICE_TOOL_NAMES).toContain('create_spreadsheet');
     expect(spreadsheetFilename({ title: 'x', filename: 'a b.xls', sheets: [] })).toBe('a_b.xlsx');
+  });
+});
+
+describe('large workbooks are never truncated', () => {
+  const grid = (rows: number, columns: number): string[][] =>
+    Array.from({ length: rows }, (_, r) => Array.from({ length: columns }, (_, c) => `r${r}c${c}`));
+
+  it('keeps 2000 rows x 50 columns', async () => {
+    const result = parseSpreadsheetInput({
+      title: 'T',
+      sheets: [{ name: 'S', header: grid(1, 50)[0], rows: grid(2000, 50) }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const xml = await sheetXml(await buildSpreadsheet(result.spec));
+    expect(xml.match(/<row /g)).toHaveLength(2001);
+    expect(xml).toContain('r1999c49');
+  });
+
+  it('refuses, rather than truncates, past the sanity limits', () => {
+    const result = parseSpreadsheetInput({
+      title: 'T',
+      sheets: [{ name: 'S', rows: grid(SPREADSHEET_LIMITS.rows + 1, 1) }],
+    });
+    expect(result).toMatchObject({ ok: false });
+    expect(result.ok === false && result.error).toContain('ничего не обрезано');
   });
 });

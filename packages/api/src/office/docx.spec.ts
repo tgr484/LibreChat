@@ -5,8 +5,8 @@ import type { GeneratedFile, GeneratedFilesArtifact } from './tool';
 import type { DocxSpec } from './types';
 import { createDocumentTool, documentFilename, GENERATED_FILES_ARTIFACT_KEY } from './tool';
 import { toolDefinitions } from '~/tools/registry/definitions';
+import { DOCX_LIMITS, parseDocumentInput } from './input';
 import { buildDocument, DOCX_MIME_TYPE } from './docx';
-import { parseDocumentInput } from './input';
 
 const spec: DocxSpec = {
   title: 'Заявление на отпуск',
@@ -105,5 +105,80 @@ describe('create_document registration', () => {
 
   it('normalises the filename extension', () => {
     expect(documentFilename({ title: 'x', filename: 'a b.docx', blocks: [] })).toBe('a_b.docx');
+  });
+});
+
+describe('large documents are never truncated', () => {
+  const wide = (rows: number, columns: number): string[][] =>
+    Array.from({ length: rows }, (_, r) => Array.from({ length: columns }, (_, c) => `r${r}c${c}`));
+
+  it('keeps every row and column of a 33x7 table', async () => {
+    const header = Array.from({ length: 7 }, (_, c) => `h${c}`);
+    const result = parseDocumentInput({
+      title: 'T',
+      blocks: [{ type: 'table', header, rows: wide(33, 7) }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const xml = await documentXml(await buildDocument(result.spec));
+    expect(xml.match(/<w:tr>|<w:tr /g)).toHaveLength(34);
+    expect(xml.match(/<w:tc>/g)).toHaveLength(34 * 7);
+    expect(xml).toContain('r32c6');
+  });
+
+  it('keeps empty cells in place and pads short rows', () => {
+    const result = parseDocumentInput({
+      title: 'T',
+      blocks: [{ type: 'table', header: ['a', 'b', 'c'], rows: [['1', null, '3'], ['x']] }],
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      spec: {
+        blocks: [
+          {
+            type: 'table',
+            header: ['a', 'b', 'c'],
+            rows: [
+              ['1', '', '3'],
+              ['x', '', ''],
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it('accepts a table without a header', () => {
+    const result = parseDocumentInput({
+      title: 'T',
+      blocks: [{ type: 'table', rows: [['1', '2']] }],
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      spec: { blocks: [{ type: 'table', header: [], rows: [['1', '2']] }] },
+    });
+  });
+
+  it('refuses, rather than truncates, past the sanity limits', () => {
+    const tooManyRows = parseDocumentInput({
+      title: 'T',
+      blocks: [{ type: 'table', header: ['a'], rows: wide(DOCX_LIMITS.rows + 1, 1) }],
+    });
+    expect(tooManyRows).toMatchObject({ ok: false });
+    expect(tooManyRows.ok === false && tooManyRows.error).toContain('ничего не обрезано');
+
+    const tooWide = parseDocumentInput({
+      title: 'T',
+      blocks: [{ type: 'table', header: wide(1, DOCX_LIMITS.columns + 1)[0], rows: [] }],
+    });
+    expect(tooWide).toMatchObject({ ok: false });
+
+    const tooLong = parseDocumentInput({
+      title: 'T',
+      blocks: [{ type: 'list', items: wide(1, DOCX_LIMITS.items + 1)[0] }],
+    });
+    expect(tooLong).toMatchObject({ ok: false });
   });
 });
