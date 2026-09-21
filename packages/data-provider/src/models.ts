@@ -55,6 +55,8 @@ export type TModelSpec = {
   fileSearch?: boolean;
   executeCode?: boolean;
   memory?: boolean;
+  /** Equip the spec's ephemeral agent with `create_document` (Word) and `create_presentation` (PowerPoint). */
+  office?: boolean;
   /** Equip the spec's ephemeral agent with the `ask_user_question` HITL tool. */
   askUserQuestion?: boolean;
   /**
@@ -197,6 +199,7 @@ export const tModelSpecSchema = z.object({
   fileSearch: z.boolean().optional(),
   executeCode: z.boolean().optional(),
   memory: z.boolean().optional(),
+  office: z.boolean().optional(),
   askUserQuestion: z.boolean().optional(),
   runInBackground: z.union([z.boolean(), z.array(z.string())]).optional(),
   describeIntent: z.union([z.boolean(), z.array(z.string())]).optional(),

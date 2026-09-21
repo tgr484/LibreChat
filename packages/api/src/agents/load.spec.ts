@@ -100,3 +100,44 @@ describe('loadEphemeralAgent → resolveSender parity', () => {
     expect(sender).toBe(parseEphemeralAgentId(agent?.id ?? '')?.sender);
   });
 });
+
+describe('loadEphemeralAgent office tools', () => {
+  const load = async (
+    ephemeralAgent: Record<string, boolean>,
+    specFlags: Record<string, boolean> = {},
+  ) => {
+    const req = {
+      user: { id: 'user-1' },
+      config: { modelSpecs: { list: [{ name: 'hr', label: 'HR', ...specFlags }] } },
+      body: { ephemeralAgent },
+    } as unknown as Parameters<typeof loadEphemeralAgent>[0]['req'];
+    return loadEphemeralAgent(
+      {
+        req,
+        spec: 'hr',
+        endpoint: 'my-custom-endpoint',
+        model_parameters: { model: 'm' } as never,
+      },
+      deps,
+    );
+  };
+
+  test('ignores a client-supplied office flag', async () => {
+    const agent = await load({ office: true });
+    expect(agent?.tools ?? []).not.toContain('create_document');
+    expect(agent?.tools ?? []).not.toContain('create_presentation');
+  });
+
+  test('equips them from a model spec', async () => {
+    const agent = await load({}, { office: true });
+    expect(agent?.tools).toEqual(
+      expect.arrayContaining(['create_document', 'create_presentation']),
+    );
+  });
+
+  test('adds nothing by default', async () => {
+    const agent = await load({});
+    expect(agent?.tools ?? []).not.toContain('create_document');
+    expect(agent?.tools ?? []).not.toContain('create_presentation');
+  });
+});
