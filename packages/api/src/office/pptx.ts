@@ -20,7 +20,7 @@ const THEME = {
   font: 'Calibri',
   text: '1F2328',
   muted: '6B7280',
-  accent: '2F5D8A',
+  accent: BRAND_ACCENT,
   rule: 'D0D5DD',
   section: 'F3F4F6',
   background: 'FFFFFF',
@@ -109,15 +109,17 @@ function defineMasters(pptx: PptxGenJS, footer: string): void {
       },
     },
   };
+  // Centered over `CORNER_ACCENT`, matching templates/template.pptx's left-corner slide number.
   const slideNumber = {
-    x: PAGE.width - PAGE.margin - 0.6,
-    y: FOOTER_TOP,
-    w: 0.6,
-    h: 0.3,
+    x: CORNER_ACCENT.x,
+    y: CORNER_ACCENT.y,
+    w: CORNER_ACCENT.w,
+    h: CORNER_ACCENT.h,
     fontFace: THEME.font,
     fontSize: 10,
-    color: THEME.muted,
-    align: 'right' as const,
+    color: THEME.background,
+    align: 'center' as const,
+    valign: 'middle' as const,
   };
 
   const masterObjects: NonNullable<PptxGenJS.SlideMasterProps['objects']> = [
