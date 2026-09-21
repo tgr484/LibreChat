@@ -11,6 +11,7 @@ import type { DochubCatalog, DochubCatalogStore, DochubCollectionResolution } fr
 import type { DochubDocumentResolution } from './catalog';
 import type { DochubLlm, DochubLlmAgent } from './llm';
 import type { DochubResolvedConfig } from './config';
+import type { DochubExtractDepth } from './extract';
 import type { DochubSurveyDepth } from './survey';
 import type { EndpointDbMethods } from '~/types';
 import type { DochubReadScope } from './reader';
@@ -18,6 +19,7 @@ import type { ServerRequest } from '~/types';
 import type { DochubClient } from './client';
 import type { RunBudget } from './budget';
 import { createDochubCatalog, createDochubCatalogStore } from './catalog';
+import { extractFromDocuments, formatExtractResult } from './extract';
 import { isDochubConfigured, resolveDochubConfig } from './config';
 import { formatSurveyResult, surveyCollection } from './survey';
 import { formatReadResult, readDocument } from './reader';
@@ -43,6 +45,10 @@ const NO_LLM_MESSAGE =
   'Не удалось подключить модель для чтения документов DocHub. Сообщи пользователю, что глубокое чтение сейчас недоступно, и опирайся на dochub_search.';
 /** The schema allows 12; the config cannot raise it past that. */
 const SURVEY_MAX_DOCUMENTS = 12;
+const EXTRACT_MAX_DOCUMENTS = 40;
+
+/** «№12», «12» → 12; anything else never matches a document. */
+const parseSeq = (value: string): number => Number(value.replace(/[^\d]/g, '')) || -1;
 
 interface ToolContext {
   client: DochubClient;
@@ -165,6 +171,24 @@ function describeCollectionMiss(resolution: DochubCollectionResolution & { ok: f
   return `Такой коллекции в DocHub нет. Доступные коллекции:\n${list}`;
 }
 
+function formatList(
+  collectionName: string,
+  collectionId: number,
+  refs: DochubDocumentRef[],
+): string {
+  if (refs.length === 0) {
+    return `Коллекция «${collectionName}» (id ${collectionId}): документов нет.`;
+  }
+  const lines = [
+    `Коллекция «${collectionName}» (id ${collectionId}). Всего документов: ${refs.length}.`,
+  ];
+  for (const ref of refs) {
+    const closed = ref.canOpen ? '' : ' — полный текст недоступен, только выжимка';
+    lines.push(`№${ref.seq} «${ref.title}»${closed}`);
+  }
+  return lines.join('\n');
+}
+
 function formatSearch(
   collectionName: string,
   collectionId: number,
@@ -232,7 +256,7 @@ export function parsePages(value: string | undefined): { from: number; to?: numb
 }
 
 /**
- * The four tools the chat model sees. They are created only when the
+ * The six tools the chat model sees. They are created only when the
  * integration is configured — `loadAndFormatTools` keeps them out of the tool
  * cache in that case, and this is the second line of defence for an agent that
  * still lists them.
@@ -261,6 +285,23 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
       name: dochubToolkit.dochub.name,
       description: dochubToolkit.dochub.description,
       schema: dochubToolkit.dochub.schema,
+    },
+  );
+
+  const list = tool(
+    async ({ collection }: { collection: string }) =>
+      withContext({ req, signal, toolName: 'dochub_list' }, async (context) => {
+        const resolved = await context.catalog.resolveCollection(collection);
+        if (!resolved.ok) {
+          return describeCollectionMiss(resolved);
+        }
+        const refs = await context.catalog.indexDocuments(resolved.id);
+        return formatList(resolved.name, resolved.id, refs);
+      }),
+    {
+      name: dochubToolkit.dochub_list.name,
+      description: dochubToolkit.dochub_list.description,
+      schema: dochubToolkit.dochub_list.schema,
     },
   );
 
@@ -357,6 +398,66 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
     },
   );
 
+  const extract = tool(
+    async ({
+      collection,
+      fields,
+      documents,
+      depth,
+    }: {
+      collection: string;
+      fields: string[];
+      documents?: string[];
+      depth?: DochubExtractDepth;
+    }) =>
+      withContext({ req, signal, toolName: 'dochub_extract' }, async (context) => {
+        const resolved = await context.catalog.resolveCollection(collection);
+        if (!resolved.ok) {
+          return describeCollectionMiss(resolved);
+        }
+        const llm = await loadLlm(context.config.runtime.agent);
+        if (!llm) {
+          return NO_LLM_MESSAGE;
+        }
+        const all = await context.catalog.indexDocuments(resolved.id);
+        const wanted = documents?.length ? new Set(documents.map(parseSeq)) : undefined;
+        const refs = (wanted ? all.filter((ref) => wanted.has(ref.seq)) : all).slice(
+          0,
+          EXTRACT_MAX_DOCUMENTS,
+        );
+        if (refs.length === 0) {
+          return `В коллекции «${resolved.name}» нет указанных документов. Сверься с dochub_list.`;
+        }
+        const { limits } = context.config.runtime;
+        const result = await extractFromDocuments({
+          collectionName: resolved.name,
+          refs,
+          fields,
+          depth: depth ?? 'summary',
+          client: context.client,
+          llm,
+          budget: context.budget,
+          limits,
+        });
+        const beyond =
+          (wanted ? all.filter((ref) => wanted.has(ref.seq)) : all).length - refs.length;
+        const notes = [
+          ...context.budget.notes(),
+          ...(beyond > 0
+            ? [
+                `⚠ За один вызов берётся до ${EXTRACT_MAX_DOCUMENTS} документов; ещё ${beyond} — повтори вызов для них.`,
+              ]
+            : []),
+        ];
+        return formatExtractResult(result, notes, limits.resultCharLimit);
+      }),
+    {
+      name: dochubToolkit.dochub_extract.name,
+      description: dochubToolkit.dochub_extract.description,
+      schema: dochubToolkit.dochub_extract.schema,
+    },
+  );
+
   const survey = tool(
     async ({
       collection,
@@ -401,7 +502,7 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
     },
   );
 
-  return [collections, search, read, survey] as DynamicStructuredTool[];
+  return [collections, list, search, read, extract, survey] as DynamicStructuredTool[];
 }
 
 export type { DochubDocumentRef };

@@ -231,6 +231,42 @@ describe('dochub', () => {
   });
 });
 
+describe('dochub_list', () => {
+  beforeEach(() => {
+    routes['GET /api/integration/v1/collections/7'] = () => ({
+      status: 200,
+      body: {
+        id: 7,
+        name: 'Нефтяное хозяйство 2018',
+        description: null,
+        owner_username: null,
+        is_member: true,
+        next_cursor: null,
+        documents: [3, 5].map((seq) => ({
+          seq,
+          id: 100 + seq,
+          title: `Документ ${seq}`,
+          doc_type: 'article',
+          category_name: null,
+          summary_preview: 'выжимка',
+          can_open: seq !== 5,
+        })),
+      },
+    });
+  });
+
+  it('lists every document of the collection with its total', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_list').invoke({
+      collection: 'нефтяное хозяйство 2018',
+    });
+
+    expect(result).toContain('Всего документов: 2');
+    expect(result).toContain('№3 «Документ 3»');
+    expect(result).toContain('№5 «Документ 5» — полный текст недоступен');
+    expect(result).not.toContain('релевантность');
+  });
+});
+
 describe('dochub_search', () => {
   it('searches the collection the user named and flags closed documents', async () => {
     const result = await toolByName(makeReq({}), 'dochub_search').invoke({
@@ -416,5 +452,65 @@ describe('dochub_survey', () => {
     expect(result).toContain('Разобрано документов: 2.');
     expect(result).toContain('№11 «Закрытый отчёт» (только выжимка, полный текст недоступен)');
     expect(result).toContain('Поиск выполнен без разбора запроса');
+  });
+});
+
+describe('dochub_extract', () => {
+  beforeEach(() => {
+    routes['GET /api/integration/v1/collections/7'] = () => ({
+      status: 200,
+      body: {
+        id: 7,
+        name: 'Нефтяное хозяйство 2018',
+        description: null,
+        owner_username: null,
+        is_member: true,
+        next_cursor: null,
+        documents: [3, 11].map((seq) => ({
+          seq,
+          id: 100 + seq,
+          title: `Документ ${seq}`,
+          doc_type: 'article',
+          category_name: null,
+          summary_preview: 'выжимка',
+          can_open: true,
+        })),
+      },
+    });
+    for (const id of [103, 111]) {
+      routes[`GET /api/integration/v1/collections/7/documents/${id}/summary`] = () => ({
+        status: 200,
+        body: {
+          id,
+          title: `Документ ${id}`,
+          summary: 'турбодетандер',
+          truncated: false,
+          can_open: true,
+        },
+      });
+    }
+  });
+
+  it('extracts the same fields from every document without a search', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_extract').invoke({
+      collection: '7',
+      fields: ['Испытания турбодетандера'],
+    });
+
+    expect(requests.some((request) => request.includes('/search'))).toBe(false);
+    expect(result).toContain('Разобрано документов: 2 из 2.');
+    expect(result).toContain('№3 «Документ 3» (по выжимке)');
+    expect(result).toContain('№11 «Документ 11» (по выжимке)');
+  });
+
+  it('takes only the documents asked for', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_extract').invoke({
+      collection: '7',
+      fields: ['Испытания турбодетандера'],
+      documents: ['№3'],
+    });
+
+    expect(result).toContain('Разобрано документов: 1 из 1.');
+    expect(result).not.toContain('№11');
   });
 });

@@ -435,6 +435,12 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: dochubToolkit.dochub.schema,
     toolType: 'builtin',
   },
+  dochub_list: {
+    name: dochubToolkit.dochub_list.name,
+    description: dochubToolkit.dochub_list.description,
+    schema: dochubToolkit.dochub_list.schema,
+    toolType: 'builtin',
+  },
   dochub_search: {
     name: dochubToolkit.dochub_search.name,
     description: dochubToolkit.dochub_search.description,
@@ -445,6 +451,12 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     name: dochubToolkit.dochub_read.name,
     description: dochubToolkit.dochub_read.description,
     schema: dochubToolkit.dochub_read.schema,
+    toolType: 'builtin',
+  },
+  dochub_extract: {
+    name: dochubToolkit.dochub_extract.name,
+    description: dochubToolkit.dochub_extract.description,
+    schema: dochubToolkit.dochub_extract.schema,
     toolType: 'builtin',
   },
   dochub_survey: {

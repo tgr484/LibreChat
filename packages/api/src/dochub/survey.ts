@@ -1,5 +1,6 @@
 import { logger } from '@librechat/data-schemas';
 import type {
+  DochubReadResult,
   DochubDocumentRef,
   DochubLimits,
   DochubSearchHit,
@@ -7,6 +8,7 @@ import type {
   DochubSurveyDocumentResult,
   DochubSurveyResult,
 } from './types';
+import type { DochubReadScope } from './reader';
 import type { DochubCatalog } from './catalog';
 import type { DochubClient } from './client';
 import type { RunBudget } from './budget';
@@ -36,7 +38,7 @@ export interface SurveyCollectionParams {
 const SUMMARY_DEPTH_CHAPTERS = 3;
 /** A document with less time than this is listed as skipped rather than started. */
 const MIN_DOCUMENT_MS = 20000;
-const minDocumentMs = (limits: DochubLimits): number =>
+export const minDocumentMs = (limits: DochubLimits): number =>
   Math.min(MIN_DOCUMENT_MS, limits.wallClockMs / 20);
 
 /**
@@ -68,6 +70,56 @@ export function documentSliceMs(params: {
   const width = Math.max(1, params.concurrency);
   const waves = Math.ceil(params.total / width) - Math.floor(params.index / width);
   return params.workRemainingMs / Math.max(1, waves);
+}
+
+export interface ReadInSliceParams {
+  ref: DochubDocumentRef;
+  question: string;
+  scope: DochubReadScope;
+  index: number;
+  total: number;
+  maxChapters: number;
+  client: DochubClient;
+  llm: DochubLlm;
+  budget: RunBudget;
+  limits: DochubLimits;
+}
+
+/**
+ * Reads one document of a batch inside its fair share of the budget. `null`
+ * means the budget could not reach it, so the caller lists it as skipped.
+ */
+export async function readInSlice(params: ReadInSliceParams): Promise<DochubReadResult | null> {
+  const { budget, limits } = params;
+  const spent = budget.exhausted();
+  if (budget.inReduceWindow() || spent.http || spent.llm || budget.signal.aborted) {
+    return null;
+  }
+  const durationMs = documentSliceMs({
+    workRemainingMs: budget.workRemainingMs(),
+    index: params.index,
+    total: params.total,
+    concurrency: limits.documentConcurrency,
+  });
+  if (durationMs < minDocumentMs(limits)) {
+    return null;
+  }
+  const slice = budget.slice({ durationMs, reserveMs: limits.reduceReserveMs });
+  try {
+    return await readDocument({
+      ref: params.ref,
+      question: params.question,
+      scope: params.scope,
+      client: params.client,
+      llm: params.llm,
+      budget: slice,
+      limits,
+      maxChapters: params.maxChapters,
+      answerCharLimit: limits.extractionCharLimit * 2,
+    });
+  } finally {
+    slice.dispose();
+  }
 }
 
 const toRef = (collectionName: string, collectionId: number, hit: DochubSearchHit) => ({
@@ -138,36 +190,21 @@ export async function surveyCollection(
     chosen,
     limits.documentConcurrency,
     async (ref, index): Promise<DochubSurveyDocumentResult | null> => {
-      const spent = budget.exhausted();
-      if (budget.inReduceWindow() || spent.http || spent.llm || budget.signal.aborted) {
-        return null;
-      }
-      const durationMs = documentSliceMs({
-        workRemainingMs: budget.workRemainingMs(),
+      const result = await readInSlice({
+        ref,
+        question: params.question,
+        scope: 'auto',
         index,
         total: chosen.length,
-        concurrency: limits.documentConcurrency,
+        maxChapters,
+        client: params.client,
+        llm: params.llm,
+        budget,
+        limits,
       });
-      if (durationMs < minDocumentMs(limits)) {
-        return null;
-      }
-      const slice = budget.slice({ durationMs, reserveMs: limits.reduceReserveMs });
-      try {
-        const result = await readDocument({
-          ref,
-          question: params.question,
-          scope: 'auto',
-          client: params.client,
-          llm: params.llm,
-          budget: slice,
-          limits,
-          maxChapters,
-          answerCharLimit: limits.extractionCharLimit * 2,
-        });
-        return { ref, synthesis: result.synthesis, source: result.source, notes: result.notes };
-      } finally {
-        slice.dispose();
-      }
+      return result == null
+        ? null
+        : { ref, synthesis: result.synthesis, source: result.source, notes: result.notes };
     },
   );
 
