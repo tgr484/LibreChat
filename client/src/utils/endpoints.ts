@@ -352,6 +352,7 @@ export function applyModelSpecEphemeralAgent({
     file_search: modelSpec.fileSearch ?? false,
     execute_code: modelSpec.executeCode ?? false,
     memory: modelSpec.memory ?? false,
+    office: modelSpec.office ?? false,
     artifacts: modelSpec.artifacts === true ? 'default' : modelSpec.artifacts || '',
   };
 
@@ -365,6 +366,7 @@ export function applyModelSpecEphemeralAgent({
       ['file_search', LocalStorageKeys.LAST_FILE_SEARCH_TOGGLE_],
       ['artifacts', LocalStorageKeys.LAST_ARTIFACTS_TOGGLE_],
       ['memory', LocalStorageKeys.LAST_MEMORY_TOGGLE_],
+      ['office', LocalStorageKeys.LAST_OFFICE_TOGGLE_],
     ];
 
     for (const [toolKey, storagePrefix] of toolStorageMap) {

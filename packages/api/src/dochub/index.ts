@@ -9,4 +9,5 @@ export * from './llm';
 export * from './prompts';
 export * from './reader';
 export * from './survey';
+export * from './extract';
 export * from './tools';

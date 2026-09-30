@@ -188,5 +188,19 @@
     "agentsOnly": true,
     "description": "Создание презентаций PowerPoint (.pptx) в минималистичном стиле",
     "authConfig": []
+  },
+  {
+    "name": "Документы Word",
+    "pluginKey": "create_document",
+    "agentsOnly": true,
+    "description": "Создание документов Word (.docx): заявления, служебные записки, отчёты",
+    "authConfig": []
+  },
+  {
+    "name": "Таблицы Excel",
+    "pluginKey": "create_spreadsheet",
+    "agentsOnly": true,
+    "description": "Создание таблиц Excel (.xlsx) с формулами",
+    "authConfig": []
   }
 ]

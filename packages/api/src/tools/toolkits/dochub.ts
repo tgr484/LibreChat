@@ -20,11 +20,15 @@ const DEFAULT_COLLECTIONS_DESCRIPTION = `Возвращает коллекции
 
 Вызывай, когда пользователь называет коллекцию словами или когда неясно, где искать. В ответе — название, id и число документов; дальше передавай название коллекции в остальные инструменты dochub_*.`;
 
+const DEFAULT_LIST_DESCRIPTION = `Возвращает ПОЛНЫЙ список документов коллекции DocHub: номер (№) и название, без фрагментов — дёшево и без порога релевантности.
+
+Вызывай, когда задача касается всех источников коллекции («по всем документам», «составь таблицу источников», «сколько документов»). Поиск для этого не годится: он отсекает документы по релевантности и не покажет все. В ответе указано общее число документов — сверяй с ним охват своей работы.`;
+
 const DEFAULT_SEARCH_DESCRIPTION = `Ищет документы внутри одной коллекции DocHub по смыслу и по словам.
 
 Возвращает список документов: номер (№) в коллекции, название, причину попадания и короткий фрагмент. Полного текста не возвращает — это первый, дешёвый шаг любой задачи по коллекции.
 
-Дальше: для глубокого разбора 1–3 отобранных документов вызывай dochub_read, для обобщения по всей коллекции — dochub_survey. Не запускай несколько поисков одновременно.`;
+Возвращает только документы выше порога релевантности, поэтому «найдено N» — не общее число документов коллекции (его даёт dochub_list). Дальше: для глубокого разбора 1–3 отобранных документов вызывай dochub_read, для обобщения по всей коллекции — dochub_survey. Не запускай несколько поисков одновременно.`;
 
 const DEFAULT_READ_DESCRIPTION = `Читает ОДИН документ коллекции DocHub вглубь — при необходимости целиком, по главам — и возвращает сжатую выжимку по заданному вопросу со ссылками на страницы оригинала.
 
@@ -33,6 +37,12 @@ const DEFAULT_READ_DESCRIPTION = `Читает ОДИН документ кол�
 Если нужное находится в известном месте документа — оглавление, список статей номера, титульные сведения, — укажи pages (например, «1-10»): это в разы быстрее чтения целиком.
 
 В ответе пользователю всегда называй документ номером и названием, например: №3 «Испытания турбодетандера», с. 14.`;
+
+const DEFAULT_EXTRACT_DESCRIPTION = `Извлекает ОДНИ И ТЕ ЖЕ характеристики сразу из многих документов коллекции параллельно и возвращает по каждому документу короткий блок «характеристика: значение». Основной инструмент для сравнительных таблиц и перечней «по каждому источнику».
+
+Вместо десятков вызовов dochub_read вызови его один раз: fields — список характеристик (каждая — формулировка вопроса вместе с нужным форматом, например «Прогнозируемый параметр (дискретное значение или временной ряд)»), documents — номера из dochub_list (не указывай, чтобы взять все). depth: summary (по умолчанию) — по выжимкам, быстро; full — по полному тексту, намного дольше, берёт только нужное. Если часть документов не разобрана из-за бюджета, вызови повторно только для них.
+
+Ответ уже содержит данные для таблицы: переноси их в таблицу без перечитывания.`;
 
 const DEFAULT_SURVEY_DESCRIPTION = `Обобщает, что говорят про заданный вопрос документы коллекции DocHub: сам выполняет поиск, разбирает отобранные документы и возвращает сводку с расхождениями между ними и ссылками на номера документов и страницы.
 
@@ -51,6 +61,12 @@ const collectionsSchema: ExtendedJsonSchema = {
     },
   },
   required: [],
+};
+
+const listSchema: ExtendedJsonSchema = {
+  type: 'object',
+  properties: { collection: COLLECTION_PROPERTY },
+  required: ['collection'],
 };
 
 const searchSchema: ExtendedJsonSchema = {
@@ -105,6 +121,34 @@ const readSchema: ExtendedJsonSchema = {
   required: ['collection', 'document', 'question'],
 };
 
+const extractSchema: ExtendedJsonSchema = {
+  type: 'object',
+  properties: {
+    collection: COLLECTION_PROPERTY,
+    fields: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 12,
+      items: { type: 'string', minLength: 3 },
+      description: 'Характеристики, которые нужно извлечь из каждого документа.',
+    },
+    documents: {
+      type: 'array',
+      maxItems: 40,
+      items: { type: 'string' },
+      description:
+        'Необязательно: номера документов (№) из dochub_list. Не указывай — будут взяты все документы коллекции (до 40 за вызов).',
+    },
+    depth: {
+      type: 'string',
+      enum: ['summary', 'full'],
+      description:
+        'summary (по умолчанию) — по выжимкам, быстро; full — по полному тексту, значительно дольше.',
+    },
+  },
+  required: ['collection', 'fields'],
+};
+
 const surveySchema: ExtendedJsonSchema = {
   type: 'object',
   properties: {
@@ -138,14 +182,21 @@ export interface DochubToolDefinition {
 
 export const dochubToolkit: {
   readonly dochub: DochubToolDefinition;
+  readonly dochub_list: DochubToolDefinition;
   readonly dochub_search: DochubToolDefinition;
   readonly dochub_read: DochubToolDefinition;
+  readonly dochub_extract: DochubToolDefinition;
   readonly dochub_survey: DochubToolDefinition;
 } = {
   dochub: {
     name: 'dochub',
     description: describe('DOCHUB_COLLECTIONS_DESCRIPTION', DEFAULT_COLLECTIONS_DESCRIPTION),
     schema: collectionsSchema,
+  },
+  dochub_list: {
+    name: 'dochub_list',
+    description: describe('DOCHUB_LIST_DESCRIPTION', DEFAULT_LIST_DESCRIPTION),
+    schema: listSchema,
   },
   dochub_search: {
     name: 'dochub_search',
@@ -156,6 +207,11 @@ export const dochubToolkit: {
     name: 'dochub_read',
     description: describe('DOCHUB_READ_DESCRIPTION', DEFAULT_READ_DESCRIPTION),
     schema: readSchema,
+  },
+  dochub_extract: {
+    name: 'dochub_extract',
+    description: describe('DOCHUB_EXTRACT_DESCRIPTION', DEFAULT_EXTRACT_DESCRIPTION),
+    schema: extractSchema,
   },
   dochub_survey: {
     name: 'dochub_survey',
@@ -172,5 +228,5 @@ export const DOCHUB_TOOLKIT_KEY = 'dochub' as const;
  * title alone, and a collection holds several issues of the same journal.
  */
 export function buildDochubToolContext(): string {
-  return `Материалы DocHub — корпоративное хранилище документов. Ссылаясь на документ, всегда называй его номер в коллекции вместе с названием и, если известна, страницу: [№3 «Испытания турбодетандера», с. 41]. Если у документа доступна только выжимка, скажи об этом пользователю. Не выдумывай номера документов и страниц — бери их из ответов инструментов dochub_*.`;
+  return `Материалы DocHub — корпоративное хранилище документов. Ссылаясь на документ, всегда называй его номер в коллекции вместе с названием и, если известна, страницу: [№3 «Испытания турбодетандера», с. 41]. Если у документа доступна только выжимка, скажи об этом пользователю. Не выдумывай номера документов и страниц — бери их из ответов инструментов dochub_*. Если задача про все документы коллекции, сначала получи полный список через dochub_list и не исключай документы без проверки: «найдено поиском» не значит «в коллекции».`;
 }

@@ -1148,8 +1148,10 @@ describe('definitions.ts', () => {
 
         expect(result.toolDefinitions.map((d) => d.name)).toEqual([
           'dochub',
+          'dochub_list',
           'dochub_search',
           'dochub_read',
+          'dochub_extract',
           'dochub_survey',
         ]);
         expect(result.toolDefinitions.every((d) => d.parameters != null)).toBe(true);

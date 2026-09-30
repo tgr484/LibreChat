@@ -1615,6 +1615,7 @@
   "com_ui_memories_partition_filter": "Filter memories by agent",
   "com_ui_memories_personal": "Personal",
   "com_ui_memory": "Memory",
+  "com_ui_office_docs": "Office documents (Word, PowerPoint, Excel)",
   "com_ui_memory_agent_badge": "Agent-scoped memory",
   "com_ui_memory_already_exceeded": "Memory storage already full - exceeded by {{tokens}} tokens. Delete existing memories before adding new ones.",
   "com_ui_memory_created": "Memory created successfully",

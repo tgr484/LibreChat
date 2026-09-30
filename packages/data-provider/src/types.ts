@@ -113,6 +113,8 @@ export type TEphemeralAgent = {
   artifacts?: string;
   skills?: boolean;
   memory?: boolean;
+  /** Equips `create_document` (Word) and `create_presentation` (PowerPoint). */
+  office?: boolean;
   /** Equip the ephemeral agent with the `ask_user_question` HITL tool. */
   ask_user_question?: boolean;
   /**
