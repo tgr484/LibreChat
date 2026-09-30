@@ -8,10 +8,10 @@ import type { IUser } from '@librechat/data-schemas';
 import type { AddressInfo } from 'node:net';
 import type { ServerRequest } from '~/types';
 import type { DochubLlm } from './llm';
+import { createDochubTools, createDochubAgentTools, parsePages } from './tools';
 import { toolDefinitions } from '~/tools/registry/definitions';
 import { toolkitExpansion } from '~/tools/toolkits/mapping';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
-import { createDochubTools, parsePages } from './tools';
 import { resetDochubConfigCache } from './config';
 import { NO_DATA } from './prompts';
 
@@ -512,5 +512,58 @@ describe('dochub_extract', () => {
 
     expect(result).toContain('Разобрано документов: 1 из 1.');
     expect(result).not.toContain('№11');
+  });
+});
+
+describe('createDochubAgentTools', () => {
+  const pinnedTool = (req: ServerRequest, collectionId: number | undefined, name: string) => {
+    const tools = createDochubAgentTools({
+      req,
+      agent: collectionId != null ? { dochub: { collection_id: collectionId } } : {},
+      resolveLlm: async () => stubLlm,
+    });
+    const found = tools.find((candidate) => candidate.name === name);
+    if (!found) {
+      throw new Error(`no ${name}`);
+    }
+    return found;
+  };
+
+  it('builds only the three pinned tools, without a collection parameter', () => {
+    const tools = createDochubAgentTools({
+      req: makeReq({}),
+      agent: { dochub: { collection_id: 7 } },
+    });
+    expect(tools.map((candidate) => candidate.name)).toEqual([
+      'dochub_agent_list',
+      'dochub_agent_search',
+      'dochub_agent_read',
+    ]);
+    for (const name of ['dochub_agent_list', 'dochub_agent_search', 'dochub_agent_read'] as const) {
+      expect(dochubToolkit[name].schema.properties).not.toHaveProperty('collection');
+      expect(toolDefinitions[name]).toBeDefined();
+    }
+  });
+
+  it('searches the pinned collection whatever the model asks for', async () => {
+    const search = pinnedTool(makeReq({}), 7, 'dochub_agent_search');
+    const result = await search.invoke({ query: 'испытания', collection: 'Инструкции по бурению' });
+    expect(result).toContain('Испытания турбодетандера');
+    expect(requests).toContain('POST /api/integration/v1/collections/7/search');
+    expect(requests).not.toContain('POST /api/integration/v1/collections/19/search');
+  });
+
+  it('refuses a pin outside the user listing without searching', async () => {
+    const search = pinnedTool(makeReq({}), 999, 'dochub_agent_search');
+    const result = await search.invoke({ query: 'испытания' });
+    expect(result).toContain('Коллекция этого агента недоступна');
+    expect(result).not.toContain('Нефтяное хозяйство');
+    expect(requests.some((request) => request.includes('/search'))).toBe(false);
+  });
+
+  it('refuses without a pin and never calls DocHub', async () => {
+    const list = pinnedTool(makeReq({}), undefined, 'dochub_agent_list');
+    await expect(list.invoke({})).resolves.toContain('не привязан к коллекции');
+    expect(requests).toEqual([]);
   });
 });

@@ -118,12 +118,13 @@ function createToolLoader({ req, res, signal, definitionsOnly = true }) {
     agentId,
     provider,
     tool_options,
+    dochub,
     tool_resources,
     requestBody,
     codeExecutionContext,
     accessibleMcpServerNames,
   }) {
-    const agent = { id: agentId, tools, provider, model, tool_options };
+    const agent = { id: agentId, tools, provider, model, tool_options, dochub };
     try {
       return await loadAgentTools({
         req,

@@ -29,6 +29,7 @@ import {
   useLocalize,
 } from '~/hooks';
 import { computeShareChanges, dedupeNewShares, principalKey } from './shareChanges';
+import { dochubErrorCode } from '~/components/SidePanel/DochubAgents/errors';
 import UnifiedPeopleSearch from './PeoplePicker/UnifiedPeopleSearch';
 import PeoplePickerAdminSettings from './PeoplePickerAdminSettings';
 import PublicSharingToggle from './PublicSharingToggle';
@@ -219,8 +220,13 @@ export default function GenericGrantAccessDialog({
       setHasChanges(false);
     } catch (error) {
       console.error('Error updating permissions:', error);
+      const dochubPrivate = dochubErrorCode(error) === 'dochub_collection_private';
       showToast({
-        message: localize('com_ui_permissions_failed_update'),
+        message: localize(
+          dochubPrivate
+            ? 'com_ui_dochub_error_collection_private'
+            : 'com_ui_permissions_failed_update',
+        ),
         status: 'error',
       });
     }

@@ -160,6 +160,11 @@ const agentSchema: Schema<IAgent> = new Schema<IAgent>(
       enum: ['user', 'agent'],
       default: undefined,
     },
+    /** Set on DocHub agents: `{ collection_id, collection_name }` of the pinned collection */
+    dochub: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
     tenantId: {
       type: String,
       index: true,

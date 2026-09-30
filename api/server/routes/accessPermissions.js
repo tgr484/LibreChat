@@ -6,7 +6,11 @@ const {
   ResourceType,
   PermissionBits,
 } = require('librechat-data-provider');
-const { createAgentAdminPermissionAccess, isAgentPermissionsAdmin } = require('@librechat/api');
+const {
+  createDochubShareGate,
+  isAgentPermissionsAdmin,
+  createAgentAdminPermissionAccess,
+} = require('@librechat/api');
 const {
   getUserEffectivePermissions,
   getAllEffectivePermissions,
@@ -19,9 +23,23 @@ const {
   checkShareAccess,
   checkSharePublicAccess,
 } = require('~/server/middleware/checkSharePublicAccess');
-const { requireJwtAuth, checkBan, uaParser, canAccessResource } = require('~/server/middleware');
+const {
+  checkBan,
+  uaParser,
+  requireJwtAuth,
+  configMiddleware,
+  canAccessResource,
+} = require('~/server/middleware');
 const { checkPeoplePickerAccess } = require('~/server/middleware/checkPeoplePickerAccess');
 const db = require('~/models');
+
+/** Agent and remote-agent shares both address the agent by its `_id`. */
+const checkDochubAgentShare = createDochubShareGate({
+  getAgentByObjectId: async (resourceId) =>
+    mongoose.isValidObjectId(resourceId)
+      ? db.getAgent({ _id: resourceId }, { author: 1, dochub: 1 })
+      : null,
+});
 const { findMCPServerByObjectId, getSkillById } = db;
 
 const router = express.Router();
@@ -198,6 +216,8 @@ router.put(
   checkShareAccessUnlessAgentAdmin,
   checkSharePublicAccess,
   rejectSharedLinkOwnerPermissionChanges,
+  configMiddleware,
+  checkDochubAgentShare,
   updateResourcePermissions,
 );
 

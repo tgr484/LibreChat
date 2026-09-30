@@ -18,6 +18,7 @@ import {
 import type {
   AgentToolResources,
   AgentToolOptions,
+  AgentDochub,
   TEndpointOption,
   ReasoningResponseKey,
   StatefulCodeEnvironment,
@@ -592,6 +593,8 @@ export interface InitializeAgentParams {
     tools: string[];
     model: string | null;
     tool_options: AgentToolOptions | undefined;
+    /** DocHub agents only: the pinned collection their tools use. */
+    dochub?: AgentDochub;
     tool_resources: AgentToolResources | undefined;
     requestBody?: RequestBody;
     /** Trusted endpoint/profile resolved for this agent before any code-file priming. */
@@ -1350,6 +1353,7 @@ export async function initializeAgent(
       tools,
       model: agent.model,
       tool_options: agent.tool_options,
+      dochub: agent.dochub,
       tool_resources,
       requestBody,
       codeExecutionContext,

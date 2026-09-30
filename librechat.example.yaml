@@ -1238,7 +1238,7 @@ endpoints:
 #     #   temperature: 0.1
 
 # DocHub integration: agent tools for research inside DocHub collections
-# (dochub, dochub_search, dochub_read, dochub_survey).
+# (dochub, dochub_list, dochub_search, dochub_read, dochub_extract, dochub_survey).
 # The tools read documents and condense them with their own LLM calls, so the
 # limits bound ONE tool call. Only LDAP users can use them. Without a valid
 # configuration the tools do not appear at all. See docs/dochub-integration.md.
@@ -1279,6 +1279,11 @@ endpoints:
 #     defaultTopK: 8
 #     slotRetries: 2            # DocHub's AI slot is shared with its own UI chat
 #     slotRetryDelayMs: 4000
+#   # (optional) «Агенты DocHub»: a trimmed builder for agents pinned to one collection
+#   agents:
+#     endpoint: "RNT"           # the agents' endpoint (for a custom endpoint, its name)
+#     model: "current_model"
+#     office: true              # Word/PowerPoint/Excel tools on new agents by default
 
 # Apply opt-in content filters to source-classified submitted and reusable content.
 # `filters` is base-config-only: database overrides and tombstones cannot add,

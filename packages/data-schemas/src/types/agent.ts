@@ -7,6 +7,7 @@ import type {
   AgentToolResources,
   AgentSubagentsConfig,
   AgentGitIdentity,
+  AgentDochub,
 } from 'librechat-data-provider';
 
 export interface ISupportContact {
@@ -61,5 +62,7 @@ export interface IAgent extends Omit<Document, 'model'> {
   subagents?: AgentSubagentsConfig;
   /** Memory partition: 'agent' isolates memories per (user, agent); default shared pool */
   memory_scope?: MemoryScope;
+  /** Set on DocHub agents: the collection the agent answers from. */
+  dochub?: AgentDochub;
   tenantId?: string;
 }

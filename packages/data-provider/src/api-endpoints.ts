@@ -302,6 +302,11 @@ export const assistants = ({
   return url;
 };
 
+export const dochubCollections = () => `${BASE_URL}/api/dochub/collections`;
+
+export const dochubPublishCollection = (collectionId: number, dryRun?: boolean) =>
+  `${BASE_URL}/api/dochub/collections/${encodeURIComponent(collectionId)}/publish${dryRun === true ? '?dry_run=1' : ''}`;
+
 export const agents = ({ path = '', options }: { path?: string; options?: object }) => {
   let url = `${BASE_URL}/api/agents`;
 

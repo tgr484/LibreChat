@@ -21,6 +21,8 @@ export interface DochubLlmAgent {
   provider?: string;
   model?: string;
   model_parameters?: { model?: string };
+  /** Present on DocHub agents: the one collection their tools may use. */
+  dochub?: { collection_id: number; collection_name?: string };
 }
 
 export interface DochubLlm {

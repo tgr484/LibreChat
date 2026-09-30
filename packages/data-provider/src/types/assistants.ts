@@ -332,6 +332,12 @@ export const agentGitIdentitySchema: z.ZodType<AgentGitIdentity | undefined> = z
   })
   .optional();
 
+/** Pins an agent to one DocHub collection; the DocHub tools ignore any other collection. */
+export type AgentDochub = {
+  collection_id: number;
+  collection_name?: string;
+};
+
 export type Agent = {
   _id?: string;
   id: string;
@@ -403,6 +409,8 @@ export type Agent = {
   subagents?: AgentSubagentsConfig;
   /** Memory partition: `agent` isolates memories per (user, agent); default shared pool */
   memory_scope?: MemoryScope;
+  /** Set on DocHub agents: the collection the agent answers from. */
+  dochub?: AgentDochub;
 };
 
 export type TAgentsMap = Record<string, Agent | undefined>;
@@ -438,6 +446,7 @@ export type AgentCreateParams = {
   | 'skills_scope'
   | 'subagents'
   | 'memory_scope'
+  | 'dochub'
 >;
 
 export type AgentUpdateParams = {
@@ -472,6 +481,7 @@ export type AgentUpdateParams = {
   | 'skills_scope'
   | 'subagents'
   | 'memory_scope'
+  | 'dochub'
 >;
 
 export type AgentListParams = {
@@ -481,6 +491,8 @@ export type AgentListParams = {
   search?: string;
   cursor?: string;
   promoted?: 0 | 1;
+  /** `1` lists only DocHub agents, `0` only the others */
+  dochub?: 0 | 1;
 };
 
 export type AgentListResponse = {

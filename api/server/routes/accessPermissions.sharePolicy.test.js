@@ -8,6 +8,7 @@ jest.mock('~/server/middleware', () => ({
   requireJwtAuth: (req, _res, next) => next(),
   checkBan: (_req, _res, next) => next(),
   uaParser: (_req, _res, next) => next(),
+  configMiddleware: (_req, _res, next) => next(),
   canAccessResource: jest.fn(() => (_req, _res, next) => next()),
 }));
 

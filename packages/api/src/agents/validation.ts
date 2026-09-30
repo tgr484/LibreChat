@@ -106,6 +106,31 @@ export const agentSupportContactSchema: z.ZodOptional<
   })
   .optional();
 
+/** DocHub pin; the server fills `collection_name` from DocHub, never from the client. */
+export const agentDochubSchema: z.ZodOptional<
+  z.ZodObject<
+    {
+      collection_id: z.ZodNumber;
+      collection_name: z.ZodOptional<z.ZodString>;
+    },
+    'strip',
+    z.ZodTypeAny,
+    {
+      collection_id: number;
+      collection_name?: string | undefined;
+    },
+    {
+      collection_id: number;
+      collection_name?: string | undefined;
+    }
+  >
+> = z
+  .object({
+    collection_id: z.number().int().positive(),
+    collection_name: z.string().max(512).optional(),
+  })
+  .optional();
+
 /** Graph edge schema for agent handoffs */
 export const graphEdgeSchema: z.ZodObject<
   {
@@ -535,6 +560,7 @@ export const agentBaseSchema: z.ZodObject<
       >
     >;
     subagents: typeof agentSubagentsSchema;
+    dochub: typeof agentDochubSchema;
     support_contact: z.ZodOptional<
       z.ZodObject<
         {
@@ -583,6 +609,7 @@ export const agentBaseSchema: z.ZodObject<
   tool_resources: agentToolResourcesSchema,
   tool_options: agentToolOptionsSchema,
   subagents: agentSubagentsSchema,
+  dochub: agentDochubSchema,
   support_contact: agentSupportContactSchema,
   category: z.string().optional(),
 });
@@ -710,6 +737,7 @@ export const agentCreateSchema: z.ZodObject<
       >
     >;
     subagents: typeof agentSubagentsSchema;
+    dochub: typeof agentDochubSchema;
     support_contact: z.ZodOptional<
       z.ZodObject<
         {
@@ -845,6 +873,7 @@ export const agentUpdateSchema: z.ZodObject<
       >
     >;
     subagents: typeof agentSubagentsSchema;
+    dochub: typeof agentDochubSchema;
     support_contact: z.ZodOptional<
       z.ZodObject<
         {

@@ -37,6 +37,7 @@ const {
   isContentTraversalProtected,
   isContentTraversalLimitError,
   resolveCanonicalFileReferences,
+  prepareDochubAgent,
 } = require('@librechat/api');
 const {
   Time,
@@ -760,7 +761,16 @@ const createAgentHandler = async (req, res) => {
      * `files`, then let the schema validate the resulting `file_ids`.
      */
     normalizeToolResourceFiles(req.body?.tool_resources);
-    const validatedData = agentCreateSchema.parse(req.body);
+    const dochubPrepared = await prepareDochubAgent({
+      req,
+      data: agentCreateSchema.parse(req.body),
+    });
+    if (!dochubPrepared.ok) {
+      return res
+        .status(dochubPrepared.status)
+        .json({ error: dochubPrepared.code, message: dochubPrepared.message });
+    }
+    const validatedData = dochubPrepared.data;
     const { tools = [], ...agentData } = removeNullishValues(validatedData);
 
     if (
@@ -1003,6 +1013,9 @@ const getAgentHandler = async (req, res, expandProperties = false) => {
       if (agent.owner_contact !== undefined) {
         responseAgent.owner_contact = agent.owner_contact;
       }
+      if (agent.dochub !== undefined) {
+        responseAgent.dochub = agent.dochub;
+      }
 
       return res.status(200).json(responseAgent);
     }
@@ -1055,7 +1068,17 @@ const updateAgentHandler = async (req, res) => {
     const id = req.params.id;
     /** See the create path: retain hydrated file IDs through validation. */
     normalizeToolResourceFiles(req.body?.tool_resources);
-    const validatedData = agentUpdateSchema.parse(req.body);
+    const dochubPrepared = await prepareDochubAgent({
+      req,
+      data: agentUpdateSchema.parse(req.body),
+      loadExisting: async () => (await db.getAgent({ id }, { dochub: 1 }))?.dochub,
+    });
+    if (!dochubPrepared.ok) {
+      return res
+        .status(dochubPrepared.status)
+        .json({ error: dochubPrepared.code, message: dochubPrepared.message });
+    }
+    const validatedData = dochubPrepared.data;
     // Preserve explicit null for avatar to allow resetting the avatar
     const {
       avatar: avatarField,
@@ -1668,7 +1691,7 @@ const deleteAgentHandler = async (req, res) => {
 const getListAgentsHandler = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { category, search, limit = 100, cursor, promoted } = req.query;
+    const { category, search, limit = 100, cursor, promoted, dochub } = req.query;
     let requiredPermission = req.query.requiredPermission;
     if (typeof requiredPermission === 'string') {
       requiredPermission = parseInt(requiredPermission, 10);
@@ -1698,6 +1721,12 @@ const getListAgentsHandler = async (req, res) => {
       filter.is_promoted = true;
     } else if (promoted === '0') {
       filter.is_promoted = { $ne: true };
+    }
+
+    if (dochub === '1') {
+      filter['dochub.collection_id'] = { $exists: true };
+    } else if (dochub === '0') {
+      filter['dochub.collection_id'] = { $exists: false };
     }
 
     // Handle search filter (escape regex and cap length)

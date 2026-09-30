@@ -743,6 +743,16 @@ export default function AgentPanel() {
               </div>
             )}
           </div>
+          {agentQuery.data?.dochub && (
+            <p
+              role="note"
+              className="mt-2 rounded-lg border border-border-light bg-surface-secondary px-3 py-2 text-xs text-text-secondary"
+            >
+              {localize('com_ui_dochub_agent_notice', {
+                name: agentQuery.data.dochub.collection_name ?? '',
+              })}
+            </p>
+          )}
           {agentQuery.isInitialLoading && <AgentPanelSkeleton />}
           {!canEditAgent && !agentQuery.isInitialLoading && (
             <div className="flex h-[30vh] w-full items-center justify-center">

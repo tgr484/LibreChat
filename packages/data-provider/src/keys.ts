@@ -56,6 +56,8 @@ export enum QueryKeys {
   randomPrompts = 'randomPrompts',
   agentCategories = 'agentCategories',
   marketplaceAgents = 'marketplaceAgents',
+  dochubCollections = 'dochubCollections',
+  dochubAgents = 'dochubAgents',
   roles = 'roles',
   rolesList = 'rolesList',
   conversationTags = 'conversationTags',

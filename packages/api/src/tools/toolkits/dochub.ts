@@ -50,6 +50,20 @@ const DEFAULT_SURVEY_DESCRIPTION = `Обобщает, что говорят пр
 
 Не используй обзор для перечней по каждому документу (оглавления, списки статей всех номеров): для этого пройди документы по одному через dochub_read с pages. depth=full нужен только для анализа содержания; время вызова делится между документами, поэтому чем больше max_documents, тем меньше читается в каждом.`;
 
+const DEFAULT_AGENT_LIST_DESCRIPTION = `Возвращает ПОЛНЫЙ список документов коллекции, за которой закреплён этот агент: номер (№) и название, без фрагментов — дёшево и без порога релевантности.
+
+Вызывай, когда пользователь спрашивает, какие документы есть в коллекции, или задача касается всех документов. Коллекцию указывать не нужно — она одна и задана заранее.`;
+
+const DEFAULT_AGENT_SEARCH_DESCRIPTION = `Ищет документы в коллекции, за которой закреплён этот агент, по смыслу и по словам. Коллекцию указывать не нужно — она одна и задана заранее.
+
+Возвращает номер документа (№), название, причину попадания и короткий фрагмент, но не полный текст. Это первый, дешёвый шаг ответа на любой вопрос пользователя. Возвращаются только документы выше порога релевантности. Для ответа по содержанию 1–3 найденных документов вызывай dochub_agent_read. Не запускай несколько поисков одновременно.`;
+
+const DEFAULT_AGENT_READ_DESCRIPTION = `Читает ОДИН документ коллекции этого агента вглубь — при необходимости целиком, по главам — и возвращает сжатую выжимку по заданному вопросу со ссылками на страницы оригинала.
+
+Вызов дорогой: он может занять минуты. Вызывай его для 1–3 документов, отобранных через dochub_agent_search. Вопрос формулируй конкретно. Если нужное в известном месте документа, укажи pages (например, «1-10»).
+
+В ответе пользователю всегда называй документ номером и названием, например: №3 «Положение об отпусках», с. 4.`;
+
 const describe = (variable: string, fallback: string): string => process.env[variable] || fallback;
 
 const collectionsSchema: ExtendedJsonSchema = {
@@ -121,6 +135,16 @@ const readSchema: ExtendedJsonSchema = {
   required: ['collection', 'document', 'question'],
 };
 
+/** The pinned tools of a DocHub agent take no collection: the server supplies it. */
+const withoutCollection = (schema: ExtendedJsonSchema): ExtendedJsonSchema => {
+  const { collection: _collection, ...properties } = schema.properties ?? {};
+  return {
+    ...schema,
+    properties,
+    required: (schema.required ?? []).filter((name) => name !== 'collection'),
+  };
+};
+
 const extractSchema: ExtendedJsonSchema = {
   type: 'object',
   properties: {
@@ -187,6 +211,9 @@ export const dochubToolkit: {
   readonly dochub_read: DochubToolDefinition;
   readonly dochub_extract: DochubToolDefinition;
   readonly dochub_survey: DochubToolDefinition;
+  readonly dochub_agent_list: DochubToolDefinition;
+  readonly dochub_agent_search: DochubToolDefinition;
+  readonly dochub_agent_read: DochubToolDefinition;
 } = {
   dochub: {
     name: 'dochub',
@@ -218,9 +245,40 @@ export const dochubToolkit: {
     description: describe('DOCHUB_SURVEY_DESCRIPTION', DEFAULT_SURVEY_DESCRIPTION),
     schema: surveySchema,
   },
+  dochub_agent_list: {
+    name: 'dochub_agent_list',
+    description: describe('DOCHUB_AGENT_LIST_DESCRIPTION', DEFAULT_AGENT_LIST_DESCRIPTION),
+    schema: withoutCollection(listSchema),
+  },
+  dochub_agent_search: {
+    name: 'dochub_agent_search',
+    description: describe('DOCHUB_AGENT_SEARCH_DESCRIPTION', DEFAULT_AGENT_SEARCH_DESCRIPTION),
+    schema: withoutCollection(searchSchema),
+  },
+  dochub_agent_read: {
+    name: 'dochub_agent_read',
+    description: describe('DOCHUB_AGENT_READ_DESCRIPTION', DEFAULT_AGENT_READ_DESCRIPTION),
+    schema: withoutCollection(readSchema),
+  },
 } as const;
 
+/**
+ * Tools of a DocHub agent — an agent pinned to one collection. They exist only
+ * as a set: `prepareDochubAgent` stores exactly these on the agent.
+ */
+export const DOCHUB_AGENT_TOOL_NAMES: readonly string[] = [
+  'dochub_agent_list',
+  'dochub_agent_search',
+  'dochub_agent_read',
+] as const;
+
 export const DOCHUB_TOOLKIT_KEY = 'dochub' as const;
+
+/** System-prompt note for a DocHub agent: names its one collection. */
+export function buildDochubAgentToolContext(collectionName: string | undefined): string {
+  const name = collectionName ? `«${collectionName}»` : 'заданной для этого агента';
+  return `Ты отвечаешь на вопросы по коллекции документов DocHub ${name}. Отвечай по материалам этой коллекции: сначала найди документы через dochub_agent_search, затем при необходимости прочитай 1–3 из них через dochub_agent_read. Ссылаясь на документ, называй его номер и название и, если известна, страницу: [№3 «Положение об отпусках», с. 4]. Не выдумывай номера документов и страниц. Если в коллекции ответа нет, прямо скажи об этом. Другие коллекции DocHub этому агенту недоступны.`;
+}
 
 /**
  * System-prompt note merged in next to the tool definitions, the same way web

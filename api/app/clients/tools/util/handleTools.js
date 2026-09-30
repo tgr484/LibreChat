@@ -17,7 +17,9 @@ const {
   getCodeApiAuthHeaders,
   buildImageToolContext,
   createDochubTools,
+  createDochubAgentTools,
   buildDochubToolContext,
+  buildDochubAgentToolContext,
   createPresentationTool,
   createDocumentTool,
   createSpreadsheetTool,
@@ -232,6 +234,24 @@ const loadTools = async ({
     tavily_search_results_json: TavilySearchResults,
   };
 
+  /**
+   * A DocHub agent's tools are pinned to `agent.dochub`, never to a model-chosen
+   * collection. Built once per load; each name returns only its own tool.
+   */
+  let dochubAgentTools;
+  const loadDochubAgentTool = (name) => async (toolContextMap) => {
+    dochubAgentTools ??= createDochubAgentTools({
+      req: options.req,
+      signal,
+      agent,
+      db: { getUserKey, getUserKeyValues },
+    });
+    if (dochubAgentTools.length > 0) {
+      toolContextMap.dochub_agent = buildDochubAgentToolContext(agent?.dochub?.collection_name);
+    }
+    return dochubAgentTools.filter((dochubTool) => dochubTool.name === name);
+  };
+
   const customConstructors = {
     /**
      * DocHub tools read documents and condense them with their own LLM calls,
@@ -249,6 +269,9 @@ const loadTools = async ({
       }
       return dochubTools;
     },
+    dochub_agent_list: loadDochubAgentTool('dochub_agent_list'),
+    dochub_agent_search: loadDochubAgentTool('dochub_agent_search'),
+    dochub_agent_read: loadDochubAgentTool('dochub_agent_read'),
     create_presentation: async () => [
       createPresentationTool({
         saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),

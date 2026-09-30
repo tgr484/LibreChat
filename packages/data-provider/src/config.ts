@@ -2137,6 +2137,14 @@ export type TStartupConfig = {
   };
   fileUploadSseEnabled?: boolean;
   endpointsDropParamsMap?: EndpointsDropParamsMap;
+  /** Present when DocHub agents can be created: the fixed endpoint/model and the Office default. */
+  dochubAgents?: TDochubAgentsStartup;
+};
+
+export type TDochubAgentsStartup = {
+  endpoint: string;
+  model: string;
+  office: boolean;
 };
 
 export type TSharedLinkStartupInterface = Pick<
@@ -2424,6 +2432,19 @@ export const dochubSearchSchema = z.object({
   slotRetryDelayMs: z.number().int().positive().default(4000),
 });
 
+/**
+ * «Агенты DocHub»: agents pinned to one collection, created from a trimmed
+ * builder. The model is the operator's choice, not the user's.
+ */
+export const dochubAgentsSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Endpoint the agents run on — for a custom endpoint, its `name`. */
+  endpoint: z.string().optional(),
+  model: z.string().optional(),
+  /** Word, PowerPoint and Excel generation on new agents by default. */
+  office: z.boolean().default(true),
+});
+
 export const dochubSchema = z.object({
   enabled: z.boolean().default(false),
   baseURL: z.string().optional(),
@@ -2438,6 +2459,7 @@ export const dochubSchema = z.object({
   agent: dochubAgentSchema.optional(),
   limits: dochubLimitsSchema.optional(),
   search: dochubSearchSchema.optional(),
+  agents: dochubAgentsSchema.optional(),
 });
 
 export type TDochubConfig = DeepPartial<z.infer<typeof dochubSchema>>;

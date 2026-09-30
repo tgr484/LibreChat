@@ -8,6 +8,7 @@ import type {
   DochubCollectionsResponse,
   DochubContent,
   DochubOutline,
+  DochubPublishResult,
   DochubRuntimeConfig,
   DochubSearchResponse,
   DochubSummaryResponse,
@@ -26,6 +27,11 @@ export interface DochubClient {
   getSummary(collectionId: number, documentId: number): Promise<DochubSummaryResponse>;
   search(collectionId: number, query: string, topK: number): Promise<DochubSearchResponse>;
   getOutline(documentId: number): Promise<DochubOutline>;
+  /** The only write: makes a collection public; `dryRun` reports what would change. */
+  publishCollection(
+    collectionId: number,
+    options?: { dryRun?: boolean },
+  ): Promise<DochubPublishResult>;
   getContent(
     documentId: number,
     selection: { chapter: number } | { pageFrom: number; pageTo?: number },
@@ -231,6 +237,14 @@ export function createDochubClient(params: DochubClientParams): DochubClient {
         method: 'post',
         data: { query, top_k: topK },
         slotAware: true,
+      }),
+
+    publishCollection: (collectionId, options) =>
+      request<DochubPublishResult>({
+        route: '/collections/{id}/publish',
+        url: `/collections/${collectionId}/publish`,
+        method: 'post',
+        params: { dry_run: options?.dryRun === true ? 'true' : 'false' },
       }),
 
     getOutline: (documentId) =>

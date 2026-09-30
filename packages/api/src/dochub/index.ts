@@ -11,3 +11,5 @@ export * from './reader';
 export * from './survey';
 export * from './extract';
 export * from './tools';
+export * from './session';
+export * from './agents';

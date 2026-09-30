@@ -3,6 +3,7 @@ import { MCPIcon, AttachmentIcon, OpenAIMinimalIcon } from '@librechat/client';
 import {
   Bot,
   Brain,
+  Library,
   Bookmark,
   NotebookPen,
   ScrollText,
@@ -29,12 +30,14 @@ import {
 import MCPBuilderPanel from '~/components/SidePanel/MCPBuilder/MCPBuilderPanel';
 import AgentPanelSwitch from '~/components/SidePanel/Agents/AgentPanelSwitch';
 import BookmarkPanel from '~/components/SidePanel/Bookmarks/BookmarkPanel';
+import { DochubAgentPanel } from '~/components/SidePanel/DochubAgents';
 import PanelSwitch from '~/components/SidePanel/Builder/PanelSwitch';
 import { SchedulePanel } from '~/components/SidePanel/Schedules';
 import Parameters from '~/components/SidePanel/Parameters/Panel';
 import { MemoryPanel } from '~/components/SidePanel/Memories';
 import FilesPanel from '~/components/SidePanel/Files/Panel';
 import { PromptsAccordion } from '~/components/Prompts';
+import { useGetStartupConfig } from '~/data-provider';
 import { SkillsAccordion } from '~/components/Skills';
 
 export default function useSideNavLinks({
@@ -97,6 +100,7 @@ export default function useSideNavLinks({
   const { availableMCPServers } = useMCPServerManager();
 
   const { agentsConfig } = useGetAgentsConfig({ endpointsConfig });
+  const { data: startupConfig } = useGetStartupConfig();
   const { skillsEnabled } = useAgentCapabilities(agentsConfig?.capabilities);
 
   const Links = useMemo(() => {
@@ -114,6 +118,21 @@ export default function useSideNavLinks({
         icon: Bot,
         id: EModelEndpoint.agents,
         Component: AgentPanelSwitch,
+      });
+    }
+
+    if (
+      startupConfig?.dochubAgents != null &&
+      endpointsConfig?.[EModelEndpoint.agents] &&
+      hasAccessToAgents &&
+      hasAccessToCreateAgents
+    ) {
+      links.push({
+        title: 'com_sidepanel_dochub_agents',
+        label: '',
+        icon: Library,
+        id: 'dochub-agents',
+        Component: DochubAgentPanel,
       });
     }
 
@@ -246,6 +265,7 @@ export default function useSideNavLinks({
   }, [
     endpoint,
     endpointsConfig,
+    startupConfig?.dochubAgents,
     keyProvided,
     hasAccessToAgents,
     hasAccessToCreateAgents,
