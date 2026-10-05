@@ -123,7 +123,7 @@ const readSchema: ExtendedJsonSchema = {
       type: 'string',
       enum: ['auto', 'full', 'summary'],
       description:
-        'auto (по умолчанию) — глубина по объёму документа; full — прочитать весь документ по главам; summary — ограничиться выжимкой (быстро).',
+        'auto (по умолчанию) — глубина по объёму документа: короткий целиком, длинный по главам; full — прочитать весь документ по главам; summary — только общий смысл по готовой выжимке: быстро, но чисел, времени, сроков, сумм и конкретных требований в ней может не быть — для таких вопросов summary не используй.',
     },
     pages: {
       type: 'string',
@@ -144,6 +144,16 @@ const withoutCollection = (schema: ExtendedJsonSchema): ExtendedJsonSchema => {
     required: (schema.required ?? []).filter((name) => name !== 'collection'),
   };
 };
+
+/**
+ * A DocHub agent answers questions of fact, and a summary drops exactly those:
+ * offered a fast summary, the model took it and reported «not in the document».
+ */
+const agentReadSchema: ExtendedJsonSchema = (() => {
+  const pinned = withoutCollection(readSchema);
+  const { scope: _scope, ...properties } = pinned.properties ?? {};
+  return { ...pinned, properties };
+})();
 
 const extractSchema: ExtendedJsonSchema = {
   type: 'object',
@@ -258,7 +268,7 @@ export const dochubToolkit: {
   dochub_agent_read: {
     name: 'dochub_agent_read',
     description: describe('DOCHUB_AGENT_READ_DESCRIPTION', DEFAULT_AGENT_READ_DESCRIPTION),
-    schema: withoutCollection(readSchema),
+    schema: agentReadSchema,
   },
 } as const;
 

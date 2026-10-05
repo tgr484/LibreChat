@@ -398,6 +398,18 @@ describe('dochub_read', () => {
     expect(content).toHaveLength(1);
   });
 
+  it('reads the text for an agent even when the model asks for the summary', async () => {
+    const read = createDochubAgentTools({
+      req: makeReq({}),
+      agent: { dochub: { collection_id: 7 } },
+      resolveLlm: async () => stubLlm,
+    }).find((candidate) => candidate.name === 'dochub_agent_read')!;
+    await read.invoke({ document: '№3', question: 'Как испытывали?', scope: 'summary' });
+
+    expect(requests).toContain('GET /api/integration/v1/documents/103/content');
+    expect(requests.some((request) => request.endsWith('/summary'))).toBe(false);
+  });
+
   it('reads a document by its number and returns a condensed answer', async () => {
     const req = makeReq(
       {},
@@ -596,6 +608,8 @@ describe('createDochubAgentTools', () => {
       expect(dochubToolkit[name].schema.properties).not.toHaveProperty('collection');
       expect(toolDefinitions[name]).toBeDefined();
     }
+    expect(dochubToolkit.dochub_agent_read.schema.properties).not.toHaveProperty('scope');
+    expect(dochubToolkit.dochub_read.schema.properties).toHaveProperty('scope');
   });
 
   it('searches the pinned collection whatever the model asks for', async () => {

@@ -534,6 +534,17 @@ describe('readDocument — document changes and access', () => {
     });
   });
 
+  it('warns that a summary of a readable document may miss the figures', async () => {
+    const { promise } = run(
+      { summary: { id: 103, title: 'Т', summary: 'выжимка', truncated: false, can_open: true } },
+      { scope: 'summary' },
+    );
+
+    const result = await promise;
+    expect(result.source).toBe('summary');
+    expect(result.notes.join('\n')).toContain('повтори вызов со scope=full');
+  });
+
   it('reads the text when a readable document has no summary yet', async () => {
     const { promise, calls } = run(
       {

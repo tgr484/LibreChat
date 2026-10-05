@@ -591,7 +591,14 @@ export function createDochubAgentTools(params: CreateDochubToolsParams): Dynamic
   const read = tool(
     async (args: ReadArgs) =>
       pinned(dochub_agent_read.name, (context, collection) =>
-        runRead(context, loadLlm, collection, args, dochub_agent_search.name, true),
+        runRead(
+          context,
+          loadLlm,
+          collection,
+          { ...args, scope: 'auto' },
+          dochub_agent_search.name,
+          true,
+        ),
       ),
     dochub_agent_read,
   );

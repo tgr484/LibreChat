@@ -273,6 +273,10 @@ function documentText(texts: readonly string[], citation: DochubCitation): strin
         .trim();
 }
 
+/** A summary keeps the gist, not the figures: its silence proves nothing about the document. */
+const SUMMARY_ONLY_NOTE =
+  '⚠ Это ответ по выжимке, а не по полному тексту: числа, время, сроки и конкретные требования в выжимке могут отсутствовать. Если ответа здесь нет или он неполный, повтори вызов со scope=full и не делай вывод, что в документе этого нет.';
+
 const TRUNCATED_NOTE =
   '⚠ Часть документа длиннее предела одного ответа DocHub и прочитана не полностью.';
 
@@ -495,7 +499,7 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
   }
   if (params.scope === 'summary') {
     try {
-      return await readSummary(params, notes);
+      return await readSummary(params, [...notes, SUMMARY_ONLY_NOTE]);
     } catch (error) {
       /** Search can surface a readable document that has no summary yet. */
       if (!isKind(error, 'not_found')) {
