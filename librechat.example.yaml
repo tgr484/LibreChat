@@ -1285,6 +1285,20 @@ endpoints:
 #     model: "current_model"
 #     office: true              # Word/PowerPoint/Excel tools on new agents by default
 
+# Reasoning on demand (custom OpenAI-compatible gateways: vLLM/SGLang/LiteLLM).
+# A classifier model reads each user message and decides whether the chat model
+# should reason: `chat_template_kwargs.enable_thinking` is set per request,
+# overriding the endpoint's `addParams` baseline. See docs/thinking.md.
+# thinking:
+#   endpoints: ["RNT"]              # custom endpoints (by name) it controls
+#   classifier:
+#     endpoint: "RNT"
+#     model: "Qwen-3.8-27B"         # a small, fast model is enough
+#     timeoutMs: 8000               # on expiry: fallback
+#     maxInputChars: 4000
+#     # prompt: "..."               # must ask for exactly `simple` or `complex`
+#   fallback: false                 # used on timeout, error or an empty message
+
 # Apply opt-in content filters to source-classified submitted and reusable content.
 # `filters` is base-config-only: database overrides and tombstones cannot add,
 # change, or remove this policy for individual users, groups, or roles.

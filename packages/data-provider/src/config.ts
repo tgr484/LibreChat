@@ -2707,6 +2707,33 @@ export const langfuseConfigSchema = z.object({
 
 export type LangfuseConfig = z.infer<typeof langfuseConfigSchema>;
 
+/**
+ * Reasoning on demand: a classifier decides per message whether the model
+ * should think (`chat_template_kwargs.enable_thinking`) on custom gateways.
+ */
+export const thinkingClassifierSchema = z.object({
+  /** Endpoint the classifier runs on — for a custom endpoint, its `name`. */
+  endpoint: z.string(),
+  model: z.string(),
+  /** On expiry the message is answered with `fallback`. */
+  timeoutMs: z.number().int().positive().default(8000),
+  /** Longer messages are cut: the classifier needs the gist, not the whole text. */
+  maxInputChars: z.number().int().positive().default(4000),
+  /** Replaces the built-in instruction; must ask for exactly `simple` or `complex`. */
+  prompt: z.string().optional(),
+});
+
+export const thinkingSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Custom endpoints (by `name`) whose chats the classifier controls. */
+  endpoints: z.array(z.string()).min(1),
+  classifier: thinkingClassifierSchema,
+  /** Used when the classifier fails, times out or the message has no text. */
+  fallback: z.boolean().default(false),
+});
+
+export type TThinkingConfig = z.infer<typeof thinkingSchema>;
+
 export const configSchema = z.object({
   version: z.string(),
   cache: z.boolean().default(true),
@@ -2715,6 +2742,7 @@ export const configSchema = z.object({
   langfuse: langfuseConfigSchema.optional(),
   memory: memorySchema.optional(),
   dochub: dochubSchema.optional(),
+  thinking: thinkingSchema.optional(),
   summarization: summarizationConfigSchema.optional(),
   skillSync: skillSyncConfigSchema,
   secureImageLinks: z.boolean().optional(),

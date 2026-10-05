@@ -5,6 +5,7 @@ import type {
   TAzureConfig,
   TCustomConfig,
   TDochubConfig,
+  TThinkingConfig,
   TMemoryConfig,
   EModelEndpoint,
   TVertexAIConfig,
@@ -63,6 +64,8 @@ export interface AppConfig {
   memory?: TMemoryConfig;
   /** DocHub integration configuration */
   dochub?: TDochubConfig;
+  /** Reasoning on demand: the per-message thinking classifier */
+  thinking?: TThinkingConfig;
   /** Summarization configuration */
   summarization?: SummarizationConfig;
   /** Web search configuration */
