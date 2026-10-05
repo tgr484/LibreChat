@@ -1259,7 +1259,7 @@ endpoints:
 #     # endpoint: "RNT"
 #     # model: "current_model"
 #     temperature: 0
-#     maxOutputTokens: 3000
+#     maxOutputTokens: 12000
 #     # false sends chat_template_kwargs.enable_thinking=false on custom endpoints (vLLM/SGLang Qwen)
 #     thinking: false
 #   # (optional) Budget of one tool call
@@ -1274,7 +1274,7 @@ endpoints:
 #     chapterConcurrency: 4
 #     documentConcurrency: 3
 #     extractionCharLimit: 1200
-#     resultCharLimit: 6000     # size of a tool answer in the chat context
+#     resultCharLimit: 32000    # size of a tool answer in the chat context
 #     directReadTokens: 16000   # a shorter document goes to the chat model whole, not summarized; 0 = off
 #   search:
 #     defaultTopK: 8

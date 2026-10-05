@@ -1,4 +1,11 @@
-import { NO_DATA, isNoData, parseSelection, extractionPrompt } from './prompts';
+import {
+  NO_DATA,
+  isNoData,
+  parseSelection,
+  extractionPrompt,
+  fullDocumentPrompt,
+  documentReducePrompt,
+} from './prompts';
 import { extractText, stripReasoning } from './llm';
 
 describe('parseSelection', () => {
@@ -69,5 +76,31 @@ describe('stripReasoning', () => {
     expect(stripReasoning('<think>рассуждаю</think>\nОтвет')).toBe('Ответ');
     expect(stripReasoning('рассуждаю</think>Ответ')).toBe('Ответ');
     expect(stripReasoning('Ответ')).toBe('Ответ');
+  });
+});
+
+describe('answer prompts', () => {
+  it('ask for a list when the question asks for one, within the limit', () => {
+    const full = fullDocumentPrompt({
+      citation: 'page',
+      seq: 5,
+      title: 'Нефтяное хозяйство, № 6',
+      question: 'Какие статьи по бурению в номере?',
+      limit: 32000,
+      text: 'текст',
+    });
+    const reduce = documentReducePrompt({
+      citation: 'page',
+      seq: 5,
+      title: 'Нефтяное хозяйство, № 6',
+      question: 'Какие статьи по бурению в номере?',
+      limit: 32000,
+      findings: [],
+    });
+
+    for (const prompt of [full, reduce]) {
+      expect(prompt).toContain('если просят перечень');
+      expect(prompt).toContain('Не более 32000 символов — уложись в этот объём целиком');
+    }
   });
 });

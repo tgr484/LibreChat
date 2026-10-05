@@ -2406,7 +2406,8 @@ export const dochubLimitsSchema = z.object({
   chapterConcurrency: z.number().int().positive().max(16).default(4),
   documentConcurrency: z.number().int().positive().max(8).default(3),
   extractionCharLimit: z.number().int().positive().default(1200),
-  resultCharLimit: z.number().int().positive().default(6000),
+  /** Size of one tool answer in the chat context; the sub-agent is asked to fit into it. */
+  resultCharLimit: z.number().int().positive().default(32000),
   /**
    * A document up to this many tokens reaches the chat model whole instead of
    * as a sub-agent summary: no extra model call, no paraphrase. 0 turns it off.
@@ -2420,7 +2421,8 @@ export const dochubAgentSchema = z.object({
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).default(0),
   /** Russian text is ~3 characters per token: the 6000-character reduce needs ~2000. */
-  maxOutputTokens: z.number().int().positive().default(3000),
+  /** Enough for a `resultCharLimit` answer: Russian runs about 3 characters per token. */
+  maxOutputTokens: z.number().int().positive().default(12000),
   /**
    * `false` sends `chat_template_kwargs.enable_thinking: false` (vLLM/SGLang
    * Qwen) on custom endpoints: extraction does not need reasoning, and

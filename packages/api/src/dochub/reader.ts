@@ -23,6 +23,7 @@ import {
 import { countTokens } from '~/utils/tokenizer';
 import { mapWithConcurrency } from './budget';
 import { DochubError } from './errors';
+import { clipAnswer } from './clip';
 
 export type DochubReadScope = 'auto' | 'full' | 'summary';
 
@@ -667,5 +668,5 @@ ${coverage}
 
 Ответ по вопросу «${question}»:
 ${result.synthesis.trim()}${notes}`;
-  return text.length <= limit ? text : `${text.slice(0, limit - 20)}\n…(ответ обрезан)`;
+  return clipAnswer(text, limit);
 }
