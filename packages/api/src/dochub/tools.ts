@@ -359,6 +359,7 @@ async function runRead(
     llm,
     budget: context.budget,
     limits,
+    direct: true,
   });
   return formatReadResult(result, question, limits.resultCharLimit);
 }

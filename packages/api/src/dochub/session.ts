@@ -5,6 +5,7 @@ import type { RunBudget } from './budget';
 import { resolveDochubConfig } from './config';
 import { resolveDochubSubject } from './token';
 import { createDochubClient } from './client';
+import { withContentCache } from './cache';
 import { createRunBudget } from './budget';
 
 export type DochubSessionFailure = 'not_configured' | 'not_ldap' | 'no_identity';
@@ -42,11 +43,9 @@ export function openDochubSession(params: {
     limits: config.runtime.limits,
     parentSignal: params.signal,
   });
-  const client = createDochubClient({
-    config: config.runtime,
-    key: config.key,
-    subject,
-    budget,
-  });
+  const client = withContentCache(
+    createDochubClient({ config: config.runtime, key: config.key, subject, budget }),
+    subject.sub,
+  );
   return { ok: true, session: { client, budget, config, sub: subject.sub } };
 }

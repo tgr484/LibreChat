@@ -31,6 +31,7 @@ const limits = (overrides: Partial<DochubLimits> = {}): DochubLimits => ({
   documentConcurrency: 3,
   extractionCharLimit: 1200,
   resultCharLimit: 6000,
+  directReadTokens: 0,
   ...overrides,
 });
 

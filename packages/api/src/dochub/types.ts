@@ -188,10 +188,19 @@ export interface DochubChapterFinding {
   truncated: boolean;
 }
 
+/**
+ * How a document is cited: by page when it has real pages, by section when it
+ * has none — a DOCX is one logical page, so «с. 1» would point nowhere.
+ */
+export type DochubCitation = 'page' | 'section';
+
 export interface DochubReadResult {
   ref: DochubDocumentRef;
   source: 'content' | 'summary';
+  citation: DochubCitation;
   findings: DochubChapterFinding[];
+  /** The whole text of a short document, handed to the chat model unread. */
+  text?: string;
   synthesis: string;
   chaptersTotal: number;
   chaptersRead: number;

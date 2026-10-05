@@ -1275,6 +1275,7 @@ endpoints:
 #     documentConcurrency: 3
 #     extractionCharLimit: 1200
 #     resultCharLimit: 6000     # size of a tool answer in the chat context
+#     directReadTokens: 16000   # a shorter document goes to the chat model whole, not summarized; 0 = off
 #   search:
 #     defaultTopK: 8
 #     slotRetries: 2            # DocHub's AI slot is shared with its own UI chat

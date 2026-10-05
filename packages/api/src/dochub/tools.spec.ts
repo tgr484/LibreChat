@@ -13,6 +13,7 @@ import { toolDefinitions } from '~/tools/registry/definitions';
 import { toolkitExpansion } from '~/tools/toolkits/mapping';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
 import { resetDochubConfigCache } from './config';
+import { clearContentCache } from './cache';
 import { NO_DATA } from './prompts';
 
 const dir = mkdtempSync(join(tmpdir(), 'dochub-tools-'));
@@ -57,6 +58,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   resetDochubConfigCache();
+  clearContentCache();
   requests = [];
   routes = {
     'GET /api/integration/v1/collections': () => ({
@@ -355,8 +357,59 @@ describe('dochub_read', () => {
     });
   });
 
+  it('hands a short document to the chat model whole, without a sub-agent call', async () => {
+    let llmCalls = 0;
+    const counting: DochubLlm = {
+      ...stubLlm,
+      invoke: async (prompt, budget, phase) => {
+        llmCalls += 1;
+        return stubLlm.invoke(prompt, budget, phase);
+      },
+    };
+    const result = await createDochubTools({ req: makeReq({}), resolveLlm: async () => counting })
+      .find((candidate) => candidate.name === 'dochub_read')!
+      .invoke({
+        collection: 'Нефтяное хозяйство 2018',
+        document: '№3',
+        question: 'Как испытывали турбодетандер?',
+      });
+
+    expect(result).toContain('Документ короткий и приведён целиком');
+    expect(result).toContain(
+      '--- ТЕКСТ ДОКУМЕНТА ---\n<!-- page: 12 -->\nтурбодетандер испытан на стенде',
+    );
+    expect(result).toContain('[№3, с. N]');
+    expect(llmCalls).toBe(0);
+  });
+
+  it('serves a repeated read of the same version from the cache', async () => {
+    const read = () =>
+      toolByName(makeReq({}), 'dochub_read').invoke({
+        collection: 'Нефтяное хозяйство 2018',
+        document: '№3',
+        question: 'Как испытывали турбодетандер?',
+      });
+    await read();
+    await read();
+
+    const outline = requests.filter((line) => line.endsWith('/documents/103/outline'));
+    const content = requests.filter((line) => line.endsWith('/documents/103/content'));
+    expect(outline).toHaveLength(2);
+    expect(content).toHaveLength(1);
+  });
+
   it('reads a document by its number and returns a condensed answer', async () => {
-    const result = await toolByName(makeReq({}), 'dochub_read').invoke({
+    const req = makeReq(
+      {},
+      {
+        enabled: true,
+        baseURL,
+        keyId: 'test',
+        privateKeyPath: keyPath,
+        limits: { wallClockMs: 10000, reduceReserveMs: 1000, directReadTokens: 0 },
+      },
+    );
+    const result = await toolByName(req, 'dochub_read').invoke({
       collection: 'Нефтяное хозяйство 2018',
       document: '№3',
       question: 'Как испытывали турбодетандер?',

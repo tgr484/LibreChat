@@ -1,6 +1,7 @@
 import { logger } from '@librechat/data-schemas';
 import type {
   DochubChapter,
+  DochubCitation,
   DochubChapterFinding,
   DochubDocumentRef,
   DochubLimits,
@@ -38,7 +39,12 @@ export interface ReadDocumentParams {
   maxChapters?: number;
   /** Survey keeps each document's answer short: only a part of it reaches the chat. */
   answerCharLimit?: number;
+  /** A short document goes to the chat model whole; survey combines many and keeps it off. */
+  direct?: boolean;
 }
+
+/** The read of one document once its citation style is known. */
+type ReadContext = ReadDocumentParams & { citation: DochubCitation };
 
 const PAGE_MARKER = /<!--\s*page:\s*\d+\s*-->/g;
 /** The share of the model's window a chapter may occupy; the rest is prompt and answer. */
@@ -79,8 +85,23 @@ export function keywordRanking(question: string, chapters: readonly DochubChapte
     .map((entry) => entry.index);
 }
 
+/**
+ * Pages are real unless the outline has none or only page 1: a DOCX without
+ * page breaks comes back as one logical page, and an unmarked text as none.
+ */
+export function citationStyle(chapters: readonly DochubChapter[]): DochubCitation {
+  for (const chapter of chapters) {
+    for (const page of [chapter.page_from, chapter.page_to]) {
+      if (page != null && page !== 1) {
+        return 'page';
+      }
+    }
+  }
+  return 'section';
+}
+
 async function planChapters(
-  params: ReadDocumentParams,
+  params: ReadContext,
   outline: DochubOutline,
   cap: number,
 ): Promise<number[]> {
@@ -93,6 +114,7 @@ async function planChapters(
   try {
     const answer = await params.llm.invoke(
       selectionPrompt({
+        citation: params.citation,
         title: params.ref.title,
         question: params.question,
         chapters,
@@ -149,16 +171,13 @@ async function fitToContext(text: string, llm: DochubLlm, depth = 0): Promise<st
   ];
 }
 
-async function extract(
-  params: ReadDocumentParams,
-  chapter: DochubChapter,
-  text: string,
-): Promise<string> {
+async function extract(params: ReadContext, chapter: DochubChapter, text: string): Promise<string> {
   const pieces = await fitToContext(text, params.llm);
   const answers: string[] = [];
   for (const piece of pieces) {
     const answer = await params.llm.invoke(
       extractionPrompt({
+        citation: params.citation,
         title: params.ref.title,
         heading: chapter.heading,
         pageFrom: chapter.page_from,
@@ -177,7 +196,7 @@ async function extract(
 }
 
 async function readChapters(
-  params: ReadDocumentParams,
+  params: ReadContext,
   outline: DochubOutline,
   plan: readonly number[],
 ): Promise<{ findings: DochubChapterFinding[]; mismatch: boolean; read: number }> {
@@ -242,6 +261,17 @@ async function readChapters(
   return { findings, mismatch, read };
 }
 
+/** Page markers mean nothing on a section-cited document and only cost tokens. */
+function documentText(texts: readonly string[], citation: DochubCitation): string {
+  const joined = texts.join('\n\n');
+  return citation === 'page'
+    ? joined
+    : joined
+        .replace(PAGE_MARKER, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 const TRUNCATED_NOTE =
   '⚠ Часть документа длиннее предела одного ответа DocHub и прочитана не полностью.';
 
@@ -254,12 +284,13 @@ const TRUNCATED_NOTE =
  * failure the chaptered path is better placed to report.
  */
 async function tryFastRead(
-  params: ReadDocumentParams,
+  params: ReadContext,
   outline: DochubOutline,
   notes: readonly string[],
 ): Promise<DochubReadResult | null> {
   const { budget, llm } = params;
-  if (llm.contextTokens == null) {
+  const direct = params.direct === true && params.limits.directReadTokens > 0;
+  if (llm.contextTokens == null && !direct) {
     return null;
   }
   const spent = budget.exhausted();
@@ -275,6 +306,7 @@ async function tryFastRead(
   );
 
   const parts: string[] = [];
+  const texts: string[] = [];
   const findings: DochubChapterFinding[] = [];
   for (const [index, result] of settled.entries()) {
     if (result.status === 'rejected') {
@@ -286,6 +318,7 @@ async function tryFastRead(
     const chapter = outline.chapters[index];
     const heading = chapter.heading ? ` «${chapter.heading}»` : '';
     parts.push(`### Часть ${chapter.index}${heading}\n${result.value.text}`);
+    texts.push(result.value.text);
     findings.push({
       chapterIndex: chapter.index,
       heading: chapter.heading,
@@ -294,6 +327,30 @@ async function tryFastRead(
       text: '',
       truncated: result.value.truncated,
     });
+  }
+
+  const base = {
+    ref: params.ref,
+    source: 'content' as const,
+    citation: params.citation,
+    findings,
+    chaptersTotal: outline.chapters.length,
+    chaptersRead: outline.chapters.length,
+  };
+  const finalNotes = (): string[] => [
+    ...notes,
+    ...(findings.some((finding) => finding.truncated) ? [TRUNCATED_NOTE] : []),
+    ...budget.notes(),
+  ];
+
+  if (direct) {
+    const text = documentText(texts, params.citation);
+    if ((await countTokens(text)) <= params.limits.directReadTokens) {
+      return { ...base, synthesis: '', text, notes: finalNotes() };
+    }
+  }
+  if (llm.contextTokens == null) {
+    return null;
   }
 
   const combined = parts.join('\n\n');
@@ -306,6 +363,7 @@ async function tryFastRead(
   try {
     answer = await llm.invoke(
       fullDocumentPrompt({
+        citation: params.citation,
         seq: params.ref.seq,
         title: params.ref.title,
         question: params.question,
@@ -327,19 +385,7 @@ async function tryFastRead(
     ? `В документе №${params.ref.seq} не нашлось сведений по вопросу.`
     : answer.trim();
 
-  return {
-    ref: params.ref,
-    source: 'content',
-    findings,
-    synthesis,
-    chaptersTotal: outline.chapters.length,
-    chaptersRead: outline.chapters.length,
-    notes: [
-      ...notes,
-      ...(findings.some((finding) => finding.truncated) ? [TRUNCATED_NOTE] : []),
-      ...budget.notes(),
-    ],
-  };
+  return { ...base, synthesis, notes: finalNotes() };
 }
 
 function emptyResult(
@@ -348,7 +394,16 @@ function emptyResult(
   synthesis: string,
   notes: string[],
 ): DochubReadResult {
-  return { ref, source, findings: [], synthesis, chaptersTotal: 0, chaptersRead: 0, notes };
+  return {
+    ref,
+    source,
+    citation: 'section',
+    findings: [],
+    synthesis,
+    chaptersTotal: 0,
+    chaptersRead: 0,
+    notes,
+  };
 }
 
 async function readSummary(params: ReadDocumentParams, notes: string[]): Promise<DochubReadResult> {
@@ -391,7 +446,7 @@ async function readSummaryOrExplain(
 }
 
 async function reduce(
-  params: ReadDocumentParams,
+  params: ReadContext,
   findings: readonly DochubChapterFinding[],
 ): Promise<string> {
   const useful = findings.filter((finding) => finding.text.length > 0);
@@ -401,6 +456,7 @@ async function reduce(
   try {
     return await params.llm.invoke(
       documentReducePrompt({
+        citation: params.citation,
         seq: params.ref.seq,
         title: params.ref.title,
         question: params.question,
@@ -449,6 +505,7 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
   }
 
   if (params.pages != null) {
+    const paged: ReadContext = { ...params, citation: 'page' };
     try {
       const content = await client.getContent(ref.id, {
         pageFrom: params.pages.from,
@@ -461,7 +518,7 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
         page_from: content.page_from,
         page_to: content.page_to,
       };
-      const text = await extract(params, chapter, content.text);
+      const text = await extract(paged, chapter, content.text);
       const findings: DochubChapterFinding[] = [
         {
           chapterIndex: 0,
@@ -478,8 +535,9 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
       return {
         ref,
         source: 'content',
+        citation: paged.citation,
         findings,
-        synthesis: await reduce(params, findings),
+        synthesis: await reduce(paged, findings),
         chaptersTotal: 1,
         chaptersRead: 1,
         notes: [...notes, ...budget.notes()],
@@ -502,21 +560,23 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
     return readSummaryOrExplain(params, notes);
   }
 
+  let context: ReadContext = { ...params, citation: citationStyle(outline.chapters) };
   const cap = params.maxChapters ?? params.limits.maxChapters;
   if (outline.chapters.length <= cap) {
-    const fast = await tryFastRead(params, outline, notes);
+    const fast = await tryFastRead(context, outline, notes);
     if (fast) {
       return fast;
     }
   }
 
-  let plan = await planChapters(params, outline, cap);
-  let pass = await readChapters(params, outline, plan);
+  let plan = await planChapters(context, outline, cap);
+  let pass = await readChapters(context, outline, plan);
 
   if (pass.mismatch) {
     outline = await client.getOutline(ref.id);
-    plan = await planChapters(params, outline, cap);
-    pass = await readChapters(params, outline, plan);
+    context = { ...params, citation: citationStyle(outline.chapters) };
+    plan = await planChapters(context, outline, cap);
+    pass = await readChapters(context, outline, plan);
     if (pass.mismatch) {
       notes.push('⚠ Документ изменился во время чтения — результат может быть неполным.');
     }
@@ -543,8 +603,9 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
   return {
     ref,
     source: 'content',
+    citation: context.citation,
     findings: pass.findings.sort((left, right) => left.chapterIndex - right.chapterIndex),
-    synthesis: await reduce(params, pass.findings),
+    synthesis: await reduce(context, pass.findings),
     chaptersTotal: total,
     chaptersRead: pass.read,
     notes: [...notes, ...budget.notes()],
@@ -564,6 +625,28 @@ function pageSpan(findings: readonly DochubChapterFinding[]): string {
   return `, с. ${Math.min(...from)}–${Math.max(...to)}`;
 }
 
+const TEXT_CITATION: Record<DochubCitation, (seq: number) => string> = {
+  page: (seq) =>
+    `Маркеры <!-- page: N --> — номера страниц оригинала: ссылайся как [№${seq}, с. N].`,
+  section: (seq) =>
+    `Страниц у документа нет: ссылайся на пункты и разделы, например [№${seq}, п. 5.2].`,
+};
+
+/**
+ * A short document as is: the chat model answers from the text itself. Its
+ * size was capped by `directReadTokens`, so it is not clipped here.
+ */
+function formatDocumentText(result: DochubReadResult, question: string): string {
+  const { ref } = result;
+  const notes = result.notes.length > 0 ? `\n${result.notes.join('\n')}` : '';
+  return `№${ref.seq} «${ref.title}» (коллекция «${ref.collectionName}»)
+Документ короткий и приведён целиком. Ответь на вопрос «${question}» сам, строго по этому тексту; числа, время, сроки и суммы приводи дословно. ${TEXT_CITATION[result.citation](ref.seq)}${notes}
+
+--- ТЕКСТ ДОКУМЕНТА ---
+${result.text}
+--- КОНЕЦ ДОКУМЕНТА ---`;
+}
+
 /** What the chat model receives: header, answer, notices — within the size limit. */
 export function formatReadResult(
   result: DochubReadResult,
@@ -571,10 +654,13 @@ export function formatReadResult(
   limit: number,
 ): string {
   const { ref } = result;
+  if (result.text != null) {
+    return formatDocumentText(result, question);
+  }
   const coverage =
     result.source === 'summary'
       ? 'Источник: выжимка документа.'
-      : `Прочитано частей: ${result.chaptersRead} из ${result.chaptersTotal}${pageSpan(result.findings)}.`;
+      : `Прочитано частей: ${result.chaptersRead} из ${result.chaptersTotal}${result.citation === 'page' ? pageSpan(result.findings) : ''}.`;
   const notes = result.notes.length > 0 ? `\n\n${result.notes.join('\n')}` : '';
   const text = `№${ref.seq} «${ref.title}» (коллекция «${ref.collectionName}»)
 ${coverage}

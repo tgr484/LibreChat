@@ -2407,6 +2407,11 @@ export const dochubLimitsSchema = z.object({
   documentConcurrency: z.number().int().positive().max(8).default(3),
   extractionCharLimit: z.number().int().positive().default(1200),
   resultCharLimit: z.number().int().positive().default(6000),
+  /**
+   * A document up to this many tokens reaches the chat model whole instead of
+   * as a sub-agent summary: no extra model call, no paraphrase. 0 turns it off.
+   */
+  directReadTokens: z.number().int().nonnegative().default(16000),
 });
 
 export const dochubAgentSchema = z.object({

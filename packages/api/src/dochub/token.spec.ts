@@ -26,6 +26,7 @@ const runtime: DochubRuntimeConfig = {
     documentConcurrency: 3,
     extractionCharLimit: 1200,
     resultCharLimit: 6000,
+    directReadTokens: 0,
   },
   agent: { temperature: 0, maxOutputTokens: 900, thinking: false },
   search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 4000 },
