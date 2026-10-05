@@ -1,6 +1,7 @@
 const accessPermissions = require('./accessPermissions');
 const assistants = require('./assistants');
 const categories = require('./categories');
+const dochub = require('./dochub');
 const adminAuth = require('./admin/auth');
 const adminConfig = require('./admin/config');
 const adminCodeEnvironments = require('./admin/code');
@@ -84,6 +85,7 @@ module.exports = {
   endpoints,
   assistants,
   categories,
+  dochub,
   staticRoute,
   accessPermissions,
 };

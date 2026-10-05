@@ -1005,7 +1005,14 @@ describe('Tool Handlers', () => {
   });
 
   describe('DocHub toolkit', () => {
-    const DOCHUB_TOOLS = ['dochub', 'dochub_search', 'dochub_read', 'dochub_survey'];
+    const DOCHUB_TOOLS = [
+      'dochub',
+      'dochub_list',
+      'dochub_search',
+      'dochub_read',
+      'dochub_extract',
+      'dochub_survey',
+    ];
     let keyDir;
     let keyPath;
 
@@ -1036,7 +1043,7 @@ describe('Tool Handlers', () => {
       },
     });
 
-    /** All four names share one factory; the run must still see each tool once. */
+    /** All six names share one factory; the run must still see each tool once. */
     it('loads every DocHub tool exactly once', async () => {
       const { loadedTools, toolContextMap } = await loadTools({
         user: fakeUser._id.toString(),
@@ -1046,6 +1053,36 @@ describe('Tool Handlers', () => {
 
       expect(loadedTools.map((tool) => tool.name).sort()).toEqual([...DOCHUB_TOOLS].sort());
       expect(toolContextMap.dochub).toContain('DocHub');
+    });
+
+    it('loads only the requested pinned tools of a DocHub agent', async () => {
+      const { loadedTools, toolContextMap } = await loadTools({
+        user: fakeUser._id.toString(),
+        agent: { dochub: { collection_id: 7, collection_name: 'Кадровые вопросы' } },
+        tools: ['dochub_agent_search', 'dochub_agent_read'],
+        options: { req: dochubReq() },
+      });
+
+      expect(loadedTools.map((tool) => tool.name).sort()).toEqual([
+        'dochub_agent_read',
+        'dochub_agent_search',
+      ]);
+      expect(toolContextMap.dochub_agent).toContain('«Кадровые вопросы»');
+      expect(toolContextMap.dochub).toBeUndefined();
+    });
+
+    it('refuses pinned tools of an agent that has no collection', async () => {
+      const { loadedTools } = await loadTools({
+        user: fakeUser._id.toString(),
+        agent: {},
+        tools: ['dochub_agent_search'],
+        options: { req: dochubReq() },
+      });
+
+      expect(loadedTools).toHaveLength(1);
+      await expect(loadedTools[0].invoke({ query: 'отпуск' })).resolves.toContain(
+        'не привязан к коллекции',
+      );
     });
 
     it('loads nothing when the integration is not configured', async () => {

@@ -18,6 +18,7 @@ import type { AppConfig, FunctionTool } from '~/types/app';
 import { loadMemoryConfig, isMemoryEnabled } from './memory';
 import { loadDefaultInterface } from './interface';
 import { loadTurnstileConfig } from './turnstile';
+import { loadThinkingConfig } from './thinking';
 import { agentsConfigSetup } from './agents';
 import { loadWebSearchConfig } from './web';
 import { loadDochubConfig } from './dochub';
@@ -139,6 +140,7 @@ export const AppService = async (params?: {
   const webSearch = loadWebSearchConfig(config.webSearch);
   const memory = loadMemoryConfig(config.memory);
   const dochub = loadDochubConfig(config.dochub);
+  const thinking = loadThinkingConfig(config.thinking);
   const summarization = loadSummarizationConfig(config);
   const skillSync = loadSkillSyncConfig(config);
   const filteredTools = config.filteredTools;
@@ -178,6 +180,7 @@ export const AppService = async (params?: {
     config,
     memory,
     dochub,
+    thinking,
     speech,
     actions,
     balance,

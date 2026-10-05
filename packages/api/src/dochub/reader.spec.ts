@@ -8,7 +8,7 @@ import type {
 } from './types';
 import type { DochubClient } from './client';
 import type { DochubLlm } from './llm';
-import { formatReadResult, keywordRanking, readDocument } from './reader';
+import { citationStyle, formatReadResult, keywordRanking, readDocument } from './reader';
 import { createRunBudget, stoppedError } from './budget';
 import { DochubError } from './errors';
 import { NO_DATA } from './prompts';
@@ -26,6 +26,7 @@ const limits = (overrides: Partial<DochubLimits> = {}): DochubLimits => ({
   documentConcurrency: 3,
   extractionCharLimit: 1200,
   resultCharLimit: 6000,
+  directReadTokens: 0,
   ...overrides,
 });
 
@@ -170,6 +171,7 @@ const run = (
     limits?: DochubLimits;
     llm?: ReturnType<typeof stubLlm>;
     maxChapters?: number;
+    direct?: boolean;
   } = {},
 ) => {
   const stub = stubClient(doc);
@@ -186,6 +188,7 @@ const run = (
     budget,
     limits: budgetLimits,
     maxChapters: params.maxChapters,
+    direct: params.direct,
   }).finally(() => budget.dispose());
   return { promise, calls: stub.calls, prompts: model.prompts, budget };
 };
@@ -531,6 +534,17 @@ describe('readDocument — document changes and access', () => {
     });
   });
 
+  it('warns that a summary of a readable document may miss the figures', async () => {
+    const { promise } = run(
+      { summary: { id: 103, title: 'Т', summary: 'выжимка', truncated: false, can_open: true } },
+      { scope: 'summary' },
+    );
+
+    const result = await promise;
+    expect(result.source).toBe('summary');
+    expect(result.notes.join('\n')).toContain('повтори вызов со scope=full');
+  });
+
   it('reads the text when a readable document has no summary yet', async () => {
     const { promise, calls } = run(
       {
@@ -605,5 +619,117 @@ describe('formatReadResult', () => {
     expect(text).toContain('Прочитано частей: 2 из 2, с. 1–20.');
     expect(text).toContain('⚠ заметка');
     expect(formatReadResult(result, 'вопрос', 60).length).toBeLessThanOrEqual(60);
+  });
+});
+
+describe('citation style', () => {
+  /** A DOCX without page breaks: every chapter sits on logical page 1. */
+  const onePage = (index: number, heading: string): DochubChapter => ({
+    index,
+    heading,
+    chars: 1000,
+    page_from: 1,
+    page_to: 1,
+  });
+
+  it('cites pages unless the outline has none or only page 1', () => {
+    expect(citationStyle([chapter(0), chapter(1)])).toBe('page');
+    expect(citationStyle([{ ...chapter(0), page_from: 1, page_to: 3 }])).toBe('page');
+    expect(citationStyle([{ ...chapter(0), page_from: 12, page_to: 12 }])).toBe('page');
+    expect(citationStyle([onePage(0, 'А'), onePage(1, 'Б')])).toBe('section');
+    expect(citationStyle([{ ...chapter(0), page_from: null, page_to: null }])).toBe('section');
+    expect(citationStyle([])).toBe('section');
+  });
+
+  it('asks the sub-agent for sections and drops «с. 1–1» on a one-page document', async () => {
+    const { promise, prompts } = run({
+      outline: outline([onePage(0, '1 Общие положения'), onePage(1, '5.2 Рабочая неделя')]),
+      content: (index) => ({ ...content(index, 'турбодетандер'), page_from: 1, page_to: 1 }),
+    });
+    const result = await promise;
+    const text = formatReadResult(result, 'вопрос', 6000);
+
+    expect(result.citation).toBe('section');
+    expect(prompts.every((prompt) => !prompt.includes('(с. N)'))).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes('[№3, п. N]'))).toBe(true);
+    expect(text).toContain('Прочитано частей: 2 из 2.');
+  });
+
+  it('keeps page citations on a paged document', async () => {
+    const { promise, prompts } = run({
+      outline: outline([chapter(0), chapter(1)]),
+      content: (index) => content(index, 'турбодетандер'),
+    });
+    const result = await promise;
+
+    expect(result.citation).toBe('page');
+    expect(prompts.some((prompt) => prompt.includes('[№3, с. N]'))).toBe(true);
+  });
+});
+
+describe('readDocument — short document handed over whole', () => {
+  const onePage = (index: number): DochubChapter => ({
+    index,
+    heading: null,
+    chars: 100,
+    page_from: 1,
+    page_to: 1,
+  });
+  const docText = (index: number, text: string): DochubContent => ({
+    ...content(index, text),
+    page_from: 1,
+    page_to: 1,
+  });
+
+  it('returns the text itself without a model call and drops meaningless page markers', async () => {
+    const { promise, prompts } = run(
+      {
+        outline: outline([onePage(0), onePage(1)]),
+        content: (index) =>
+          docText(
+            index,
+            index === 0 ? '<!-- page: 1 -->\n1. Общие' : '5.2 начало в 9 час. 00 мин.',
+          ),
+      },
+      { direct: true, limits: limits({ directReadTokens: 1000 }) },
+    );
+    const result = await promise;
+    const text = formatReadResult(result, 'Во сколько начало?', 100);
+
+    expect(prompts).toHaveLength(0);
+    expect(result.text).toBe('1. Общие\n\n5.2 начало в 9 час. 00 мин.');
+    expect(text).toContain('Документ короткий и приведён целиком');
+    expect(text).toContain('[№3, п. 5.2]');
+    expect(text).toContain('5.2 начало в 9 час. 00 мин.\n--- КОНЕЦ ДОКУМЕНТА ---');
+  });
+
+  it('summarizes a document above the threshold as before', async () => {
+    const { promise } = run(
+      {
+        outline: outline([chapter(0), chapter(1)]),
+        content: (index) => content(index, 'турбодетандер '.repeat(200)),
+      },
+      {
+        direct: true,
+        limits: limits({ directReadTokens: 50 }),
+        llm: stubLlm({ contextTokens: 100000 }),
+      },
+    );
+    const result = await promise;
+
+    expect(result.text).toBeUndefined();
+    expect(result.synthesis).toContain('СВОДКА-ОДНИМ-ВЫЗОВОМ');
+  });
+
+  it('never hands text over when the caller did not ask for it', async () => {
+    const { promise } = run(
+      {
+        outline: outline([chapter(0)]),
+        content: (index) => content(index, 'турбодетандер'),
+      },
+      { limits: limits({ directReadTokens: 1000 }), llm: stubLlm({ contextTokens: 100000 }) },
+    );
+
+    expect((await promise).text).toBeUndefined();
   });
 });

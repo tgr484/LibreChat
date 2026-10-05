@@ -184,6 +184,36 @@ describe('resolveDocument', () => {
     });
   });
 
+  it('takes the number when the model adds the title to it', async () => {
+    const { client } = stubClient(pages);
+    const catalog = createDochubCatalog({ client });
+
+    await expect(catalog.resolveDocument(7, '№3 «Отчёт по бурению»')).resolves.toMatchObject({
+      ok: true,
+      ref: { id: 103 },
+    });
+    await expect(catalog.resolveDocument(7, '№ 4, Отчёт по бурению')).resolves.toMatchObject({
+      ok: true,
+      ref: { id: 104 },
+    });
+    await expect(catalog.resolveDocument(7, '№12 Отчёт')).resolves.toMatchObject({
+      ok: false,
+      reason: 'not_found',
+    });
+  });
+
+  it('reads a leading number without № as part of a title', async () => {
+    const { client } = stubClient({
+      7: [page(7, 'Отчёты', [entry(1, 201, '2018 Отчёт'), entry(2, 202, 'Сводка')])],
+    });
+    const catalog = createDochubCatalog({ client });
+
+    await expect(catalog.resolveDocument(7, '2018 Отчёт')).resolves.toMatchObject({
+      ok: true,
+      ref: { id: 201 },
+    });
+  });
+
   it('walks every page of the collection', async () => {
     const { client, calls } = stubClient(pages);
     const catalog = createDochubCatalog({ client });

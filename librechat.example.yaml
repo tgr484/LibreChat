@@ -1238,7 +1238,7 @@ endpoints:
 #     #   temperature: 0.1
 
 # DocHub integration: agent tools for research inside DocHub collections
-# (dochub, dochub_search, dochub_read, dochub_survey).
+# (dochub, dochub_list, dochub_search, dochub_read, dochub_extract, dochub_survey).
 # The tools read documents and condense them with their own LLM calls, so the
 # limits bound ONE tool call. Only LDAP users can use them. Without a valid
 # configuration the tools do not appear at all. See docs/dochub-integration.md.
@@ -1259,7 +1259,7 @@ endpoints:
 #     # endpoint: "RNT"
 #     # model: "current_model"
 #     temperature: 0
-#     maxOutputTokens: 3000
+#     maxOutputTokens: 12000
 #     # false sends chat_template_kwargs.enable_thinking=false on custom endpoints (vLLM/SGLang Qwen)
 #     thinking: false
 #   # (optional) Budget of one tool call
@@ -1274,11 +1274,31 @@ endpoints:
 #     chapterConcurrency: 4
 #     documentConcurrency: 3
 #     extractionCharLimit: 1200
-#     resultCharLimit: 6000     # size of a tool answer in the chat context
+#     resultCharLimit: 32000    # size of a tool answer in the chat context
+#     directReadTokens: 16000   # a shorter document goes to the chat model whole, not summarized; 0 = off
 #   search:
 #     defaultTopK: 8
 #     slotRetries: 2            # DocHub's AI slot is shared with its own UI chat
 #     slotRetryDelayMs: 4000
+#   # (optional) «Агенты DocHub»: a trimmed builder for agents pinned to one collection
+#   agents:
+#     endpoint: "RNT"           # the agents' endpoint (for a custom endpoint, its name)
+#     model: "current_model"
+#     office: true              # Word/PowerPoint/Excel tools on new agents by default
+
+# Reasoning on demand (custom OpenAI-compatible gateways: vLLM/SGLang/LiteLLM).
+# A classifier model reads each user message and decides whether the chat model
+# should reason: `chat_template_kwargs.enable_thinking` is set per request,
+# overriding the endpoint's `addParams` baseline. See docs/thinking.md.
+# thinking:
+#   endpoints: ["RNT"]              # custom endpoints (by name) it controls
+#   classifier:
+#     endpoint: "RNT"
+#     model: "Qwen-3.8-27B"         # a small, fast model is enough
+#     timeoutMs: 8000               # on expiry: fallback
+#     maxInputChars: 4000
+#     # prompt: "..."               # must ask for exactly `simple` or `complex`
+#   fallback: false                 # used on timeout, error or an empty message
 
 # Apply opt-in content filters to source-classified submitted and reusable content.
 # `filters` is base-config-only: database overrides and tombstones cannot add,

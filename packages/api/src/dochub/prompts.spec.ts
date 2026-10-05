@@ -1,4 +1,11 @@
-import { NO_DATA, isNoData, parseSelection, extractionPrompt } from './prompts';
+import {
+  NO_DATA,
+  isNoData,
+  parseSelection,
+  extractionPrompt,
+  fullDocumentPrompt,
+  documentReducePrompt,
+} from './prompts';
 import { extractText, stripReasoning } from './llm';
 
 describe('parseSelection', () => {
@@ -22,6 +29,7 @@ describe('isNoData', () => {
 describe('extractionPrompt', () => {
   it('carries the question, the pages and the text', () => {
     const prompt = extractionPrompt({
+      citation: 'page',
       title: 'Отчёт',
       heading: 'Введение',
       pageFrom: 3,
@@ -35,6 +43,23 @@ describe('extractionPrompt', () => {
     expect(prompt).toContain('Вопрос: «Какое давление?»');
     expect(prompt).toContain(`ответь ровно: ${NO_DATA}`);
     expect(prompt.endsWith('давление 12 МПа')).toBe(true);
+  });
+
+  it('asks for sections instead of pages when the document has none', () => {
+    const prompt = extractionPrompt({
+      citation: 'section',
+      title: 'Правила',
+      heading: '5.2 Продолжительность рабочей недели',
+      pageFrom: 1,
+      pageTo: 1,
+      question: 'Во сколько начало работы?',
+      limit: 1200,
+      text: 'время начала рабочего дня 9 час. 00 мин.',
+    });
+
+    expect(prompt).toContain('«Правила», глава «5.2 Продолжительность рабочей недели».');
+    expect(prompt).toContain('(п. 5.2)');
+    expect(prompt).not.toMatch(/\(с\. |<!-- page/);
   });
 });
 
@@ -51,5 +76,31 @@ describe('stripReasoning', () => {
     expect(stripReasoning('<think>рассуждаю</think>\nОтвет')).toBe('Ответ');
     expect(stripReasoning('рассуждаю</think>Ответ')).toBe('Ответ');
     expect(stripReasoning('Ответ')).toBe('Ответ');
+  });
+});
+
+describe('answer prompts', () => {
+  it('ask for a list when the question asks for one, within the limit', () => {
+    const full = fullDocumentPrompt({
+      citation: 'page',
+      seq: 5,
+      title: 'Нефтяное хозяйство, № 6',
+      question: 'Какие статьи по бурению в номере?',
+      limit: 32000,
+      text: 'текст',
+    });
+    const reduce = documentReducePrompt({
+      citation: 'page',
+      seq: 5,
+      title: 'Нефтяное хозяйство, № 6',
+      question: 'Какие статьи по бурению в номере?',
+      limit: 32000,
+      findings: [],
+    });
+
+    for (const prompt of [full, reduce]) {
+      expect(prompt).toContain('если просят перечень');
+      expect(prompt).toContain('Не более 32000 символов — уложись в этот объём целиком');
+    }
   });
 });

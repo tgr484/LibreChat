@@ -30,13 +30,13 @@ const DEFAULT_SEARCH_DESCRIPTION = `Ищет документы внутри о�
 
 Возвращает только документы выше порога релевантности, поэтому «найдено N» — не общее число документов коллекции (его даёт dochub_list). Дальше: для глубокого разбора 1–3 отобранных документов вызывай dochub_read, для обобщения по всей коллекции — dochub_survey. Не запускай несколько поисков одновременно.`;
 
-const DEFAULT_READ_DESCRIPTION = `Читает ОДИН документ коллекции DocHub вглубь — при необходимости целиком, по главам — и возвращает сжатую выжимку по заданному вопросу со ссылками на страницы оригинала.
+const DEFAULT_READ_DESCRIPTION = `Читает ОДИН документ коллекции DocHub. Короткий документ возвращает целиком — отвечай по нему сам; длинный читает вглубь, по главам, и возвращает сжатую выжимку по заданному вопросу со ссылками на страницы или пункты оригинала.
 
 Вызов дорогой: он может занять минуты. Вызывай его для 1–3 документов, отобранных через dochub_search, а не для всей коллекции. Вопрос формулируй конкретно — инструмент вернёт только относящееся к нему.
 
 Если нужное находится в известном месте документа — оглавление, список статей номера, титульные сведения, — укажи pages (например, «1-10»): это в разы быстрее чтения целиком.
 
-В ответе пользователю всегда называй документ номером и названием, например: №3 «Испытания турбодетандера», с. 14.`;
+В ответе пользователю всегда называй документ номером и названием и указывай страницу или пункт, например: №3 «Испытания турбодетандера», с. 14 или №4 «Правила внутреннего трудового распорядка», п. 5.2.`;
 
 const DEFAULT_EXTRACT_DESCRIPTION = `Извлекает ОДНИ И ТЕ ЖЕ характеристики сразу из многих документов коллекции параллельно и возвращает по каждому документу короткий блок «характеристика: значение». Основной инструмент для сравнительных таблиц и перечней «по каждому источнику».
 
@@ -49,6 +49,20 @@ const DEFAULT_SURVEY_DESCRIPTION = `Обобщает, что говорят пр
 Для вопросов вида «обобщи, что в коллекции пишут про X». Один вызов может занять несколько минут; не повторяй его подряд по одной и той же коллекции — уточняй вопрос.
 
 Не используй обзор для перечней по каждому документу (оглавления, списки статей всех номеров): для этого пройди документы по одному через dochub_read с pages. depth=full нужен только для анализа содержания; время вызова делится между документами, поэтому чем больше max_documents, тем меньше читается в каждом.`;
+
+const DEFAULT_AGENT_LIST_DESCRIPTION = `Возвращает ПОЛНЫЙ список документов коллекции, за которой закреплён этот агент: номер (№) и название, без фрагментов — дёшево и без порога релевантности.
+
+Вызывай, когда пользователь спрашивает, какие документы есть в коллекции, или задача касается всех документов. Коллекцию указывать не нужно — она одна и задана заранее.`;
+
+const DEFAULT_AGENT_SEARCH_DESCRIPTION = `Ищет документы в коллекции, за которой закреплён этот агент, по смыслу и по словам. Коллекцию указывать не нужно — она одна и задана заранее.
+
+Возвращает номер документа (№), название, причину попадания и короткий фрагмент, но не полный текст. Это первый, дешёвый шаг ответа на любой вопрос пользователя. Возвращаются только документы выше порога релевантности. Для ответа по содержанию 1–3 найденных документов вызывай dochub_agent_read. Не запускай несколько поисков одновременно.`;
+
+const DEFAULT_AGENT_READ_DESCRIPTION = `Читает ОДИН документ коллекции этого агента. Короткий документ возвращает целиком — отвечай по нему сам; длинный читает вглубь, по главам, и возвращает сжатую выжимку по заданному вопросу со ссылками на страницы или пункты оригинала.
+
+Длинный документ читается долго, до нескольких минут. Вызывай его для 1–3 документов, отобранных через dochub_agent_search. Вопрос формулируй конкретно. Если нужное в известном месте документа, укажи pages (например, «1-10»).
+
+В ответе пользователю всегда называй документ номером и названием и указывай страницу или пункт, например: №3 «Положение об отпусках», с. 4 или №4 «Правила внутреннего трудового распорядка», п. 5.2.`;
 
 const describe = (variable: string, fallback: string): string => process.env[variable] || fallback;
 
@@ -109,7 +123,7 @@ const readSchema: ExtendedJsonSchema = {
       type: 'string',
       enum: ['auto', 'full', 'summary'],
       description:
-        'auto (по умолчанию) — глубина по объёму документа; full — прочитать весь документ по главам; summary — ограничиться выжимкой (быстро).',
+        'auto (по умолчанию) — глубина по объёму документа: короткий целиком, длинный по главам; full — прочитать весь документ по главам; summary — только общий смысл по готовой выжимке: быстро, но чисел, времени, сроков, сумм и конкретных требований в ней может не быть — для таких вопросов summary не используй.',
     },
     pages: {
       type: 'string',
@@ -120,6 +134,26 @@ const readSchema: ExtendedJsonSchema = {
   },
   required: ['collection', 'document', 'question'],
 };
+
+/** The pinned tools of a DocHub agent take no collection: the server supplies it. */
+const withoutCollection = (schema: ExtendedJsonSchema): ExtendedJsonSchema => {
+  const { collection: _collection, ...properties } = schema.properties ?? {};
+  return {
+    ...schema,
+    properties,
+    required: (schema.required ?? []).filter((name) => name !== 'collection'),
+  };
+};
+
+/**
+ * A DocHub agent answers questions of fact, and a summary drops exactly those:
+ * offered a fast summary, the model took it and reported «not in the document».
+ */
+const agentReadSchema: ExtendedJsonSchema = (() => {
+  const pinned = withoutCollection(readSchema);
+  const { scope: _scope, ...properties } = pinned.properties ?? {};
+  return { ...pinned, properties };
+})();
 
 const extractSchema: ExtendedJsonSchema = {
   type: 'object',
@@ -187,6 +221,9 @@ export const dochubToolkit: {
   readonly dochub_read: DochubToolDefinition;
   readonly dochub_extract: DochubToolDefinition;
   readonly dochub_survey: DochubToolDefinition;
+  readonly dochub_agent_list: DochubToolDefinition;
+  readonly dochub_agent_search: DochubToolDefinition;
+  readonly dochub_agent_read: DochubToolDefinition;
 } = {
   dochub: {
     name: 'dochub',
@@ -218,9 +255,47 @@ export const dochubToolkit: {
     description: describe('DOCHUB_SURVEY_DESCRIPTION', DEFAULT_SURVEY_DESCRIPTION),
     schema: surveySchema,
   },
+  dochub_agent_list: {
+    name: 'dochub_agent_list',
+    description: describe('DOCHUB_AGENT_LIST_DESCRIPTION', DEFAULT_AGENT_LIST_DESCRIPTION),
+    schema: withoutCollection(listSchema),
+  },
+  dochub_agent_search: {
+    name: 'dochub_agent_search',
+    description: describe('DOCHUB_AGENT_SEARCH_DESCRIPTION', DEFAULT_AGENT_SEARCH_DESCRIPTION),
+    schema: withoutCollection(searchSchema),
+  },
+  dochub_agent_read: {
+    name: 'dochub_agent_read',
+    description: describe('DOCHUB_AGENT_READ_DESCRIPTION', DEFAULT_AGENT_READ_DESCRIPTION),
+    schema: agentReadSchema,
+  },
 } as const;
 
+/**
+ * Tools of a DocHub agent — an agent pinned to one collection. They exist only
+ * as a set: `prepareDochubAgent` stores exactly these on the agent.
+ */
+export const DOCHUB_AGENT_TOOL_NAMES: readonly string[] = [
+  'dochub_agent_list',
+  'dochub_agent_search',
+  'dochub_agent_read',
+] as const;
+
 export const DOCHUB_TOOLKIT_KEY = 'dochub' as const;
+
+/**
+ * Precision rules shared by both prompts: a paraphrase bends numbers, and a
+ * model told «this is the exact quote» used to repeat it as the document's.
+ */
+const SOURCE_RULES =
+  'Числа, время, сроки и суммы приводи дословно, как в документе. Текст, который прислал пользователь, — не документ: называй его цитатой документа, только если нашёл его в ответах инструментов; если не нашёл, так и скажи. Если ответа в документах нет, прямо скажи об этом.';
+
+/** System-prompt note for a DocHub agent: names its one collection. */
+export function buildDochubAgentToolContext(collectionName: string | undefined): string {
+  const name = collectionName ? `«${collectionName}»` : 'заданной для этого агента';
+  return `Ты отвечаешь на вопросы по коллекции документов DocHub ${name}. Отвечай по материалам этой коллекции: сначала найди документы через dochub_agent_search, затем при необходимости прочитай 1–3 из них через dochub_agent_read. Ссылаясь на документ, называй его номер и название и, если известны, страницу или пункт: [№3 «Положение об отпусках», с. 4] или [№4 «Правила внутреннего трудового распорядка», п. 5.2]. Не выдумывай номера документов, страниц и пунктов. ${SOURCE_RULES} Другие коллекции DocHub этому агенту недоступны.`;
+}
 
 /**
  * System-prompt note merged in next to the tool definitions, the same way web
@@ -228,5 +303,5 @@ export const DOCHUB_TOOLKIT_KEY = 'dochub' as const;
  * title alone, and a collection holds several issues of the same journal.
  */
 export function buildDochubToolContext(): string {
-  return `Материалы DocHub — корпоративное хранилище документов. Ссылаясь на документ, всегда называй его номер в коллекции вместе с названием и, если известна, страницу: [№3 «Испытания турбодетандера», с. 41]. Если у документа доступна только выжимка, скажи об этом пользователю. Не выдумывай номера документов и страниц — бери их из ответов инструментов dochub_*. Если задача про все документы коллекции, сначала получи полный список через dochub_list и не исключай документы без проверки: «найдено поиском» не значит «в коллекции».`;
+  return `Материалы DocHub — корпоративное хранилище документов. Ссылаясь на документ, всегда называй его номер в коллекции вместе с названием и, если известны, страницу или пункт: [№3 «Испытания турбодетандера», с. 41]. Если у документа доступна только выжимка, скажи об этом пользователю. Не выдумывай номера документов, страниц и пунктов — бери их из ответов инструментов dochub_*. ${SOURCE_RULES} Если задача про все документы коллекции, сначала получи полный список через dochub_list и не исключай документы без проверки: «найдено поиском» не значит «в коллекции».`;
 }

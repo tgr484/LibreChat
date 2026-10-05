@@ -18,6 +18,7 @@ import {
 import type {
   AgentToolResources,
   AgentToolOptions,
+  AgentDochub,
   TEndpointOption,
   ReasoningResponseKey,
   StatefulCodeEnvironment,
@@ -94,6 +95,7 @@ import { extractAgentContent, extractSkillContent } from '../protection/adapters
 import { createConfiguredContentInspector, inspectContent } from '../protection/runtime';
 import { assertAgentAttachmentLimits, isModelBoundAttachmentFile } from './attachments';
 import { assertModelBoundContent } from '../middleware/modelBoundContent';
+import { startThinkingDecision, applyThinkingDecision } from './thinking';
 import { registerMemoryTools, memoryToolUsageGuard } from './memory';
 import { applyIntentLabels, sanitizeIntentLabels } from './intent';
 import { ContentFilterError } from '../middleware/contentFilter';
@@ -592,6 +594,8 @@ export interface InitializeAgentParams {
     tools: string[];
     model: string | null;
     tool_options: AgentToolOptions | undefined;
+    /** DocHub agents only: the pinned collection their tools use. */
+    dochub?: AgentDochub;
     tool_resources: AgentToolResources | undefined;
     requestBody?: RequestBody;
     /** Trusted endpoint/profile resolved for this agent before any code-file priming. */
@@ -839,6 +843,14 @@ export async function initializeAgent(
   ) {
     throw agentTraversalError;
   }
+
+  /** Started here so the classifier call overlaps tool loading; awaited before the model is built. */
+  const thinkingDecision = startThinkingDecision({
+    key: params.req ?? runtime.requestBody,
+    endpoint: agent.provider,
+    runtime,
+    db,
+  });
 
   /**
    * Heal legacy MCP tool keys ONCE, before anything reads them: model-facing
@@ -1350,6 +1362,7 @@ export async function initializeAgent(
       tools,
       model: agent.model,
       tool_options: agent.tool_options,
+      dochub: agent.dochub,
       tool_resources,
       requestBody,
       codeExecutionContext,
@@ -1448,7 +1461,7 @@ export async function initializeAgent(
     model: agent.model,
   };
 
-  const options: InitializeResultBase = await getOptions({
+  const resolvedOptions: InitializeResultBase = await getOptions({
     runtime: {
       appConfig,
       user,
@@ -1458,6 +1471,14 @@ export async function initializeAgent(
     model_parameters: finalModelOptions,
     db,
   });
+  const options: InitializeResultBase = {
+    ...resolvedOptions,
+    llmConfig: applyThinkingDecision(
+      resolvedOptions.llmConfig as { modelKwargs?: Record<string, unknown> },
+      await thinkingDecision,
+      { customEndpointConfig, overrideProvider },
+    ),
+  };
 
   const llmConfig = options.llmConfig as Record<string, unknown>;
   const tokensModel =

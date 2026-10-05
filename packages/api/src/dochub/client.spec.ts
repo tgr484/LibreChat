@@ -75,6 +75,7 @@ const limits: DochubLimits = {
   documentConcurrency: 3,
   extractionCharLimit: 1200,
   resultCharLimit: 6000,
+  directReadTokens: 0,
 };
 
 const runtime = (overrides: Partial<DochubRuntimeConfig> = {}): DochubRuntimeConfig => ({

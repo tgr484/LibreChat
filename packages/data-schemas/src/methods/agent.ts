@@ -1300,6 +1300,7 @@ export function createAgentMethods(
       category: 1,
       support_contact: 1,
       is_promoted: 1,
+      dochub: 1,
     };
 
     if (includeSkillConfig) {

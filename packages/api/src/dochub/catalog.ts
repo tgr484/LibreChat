@@ -163,7 +163,8 @@ export function createDochubCatalog(params: {
 
     resolveDocument: async (collectionId, input) => {
       const wanted = normalizeName(input);
-      const seq = /^(?:№\s*)?(\d+)$/.exec(wanted)?.[1];
+      /** «4», «№4» and «№4 «Название»» — models often add the title to the number. */
+      const seq = (/^№\s*(\d+)(?!\d)/.exec(wanted) ?? /^(\d+)$/.exec(wanted))?.[1];
 
       const known = documentsOf(collectionId);
       const bySeq = (value: number) => [...known.values()].find((ref) => ref.seq === value);

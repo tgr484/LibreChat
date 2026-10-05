@@ -7,6 +7,10 @@ import type { Request } from 'express';
  * (have to use type alias because you can't extend indexed access types like Request['body'])
  */
 export type RequestBody = {
+  /** The user's message of this turn; empty on regenerate/continue. */
+  text?: string;
+  /** Files attached to this turn's message. */
+  files?: Array<{ file_id?: string }>;
   messageId?: string;
   fileTokenLimit?: number;
   conversationId?: string;

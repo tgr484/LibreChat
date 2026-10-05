@@ -3,7 +3,17 @@ const fs = require('fs');
 const path = require('path');
 const { loadAndFormatTools } = require('./tools');
 
-const DOCHUB_TOOLS = ['dochub', 'dochub_search', 'dochub_read', 'dochub_survey'];
+const DOCHUB_TOOLS = [
+  'dochub',
+  'dochub_list',
+  'dochub_search',
+  'dochub_read',
+  'dochub_extract',
+  'dochub_survey',
+  'dochub_agent_list',
+  'dochub_agent_search',
+  'dochub_agent_read',
+];
 
 describe('loadAndFormatTools — DocHub', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tools-'));
@@ -29,6 +39,8 @@ describe('loadAndFormatTools — DocHub', () => {
       expect(tools[name].function.parameters.type).toBe('object');
     }
     expect(tools.dochub_search.function.parameters.required).toEqual(['collection', 'query']);
+    /** A DocHub agent's tools must survive `filterAuthorizedTools`, which reads this cache. */
+    expect(tools.dochub_agent_search.function.parameters.required).toEqual(['query']);
   });
 
   it('lets the admin include the whole toolkit by its key', () => {

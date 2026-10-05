@@ -465,6 +465,25 @@ export const toolDefinitions: Record<string, ToolRegistryDefinition> = {
     schema: dochubToolkit.dochub_survey.schema,
     toolType: 'builtin',
   },
+  /** Pinned tools of a DocHub agent: the collection comes from the agent, not the model. */
+  dochub_agent_list: {
+    name: dochubToolkit.dochub_agent_list.name,
+    description: dochubToolkit.dochub_agent_list.description,
+    schema: dochubToolkit.dochub_agent_list.schema,
+    toolType: 'builtin',
+  },
+  dochub_agent_search: {
+    name: dochubToolkit.dochub_agent_search.name,
+    description: dochubToolkit.dochub_agent_search.description,
+    schema: dochubToolkit.dochub_agent_search.schema,
+    toolType: 'builtin',
+  },
+  dochub_agent_read: {
+    name: dochubToolkit.dochub_agent_read.name,
+    description: dochubToolkit.dochub_agent_read.description,
+    schema: dochubToolkit.dochub_agent_read.schema,
+    toolType: 'builtin',
+  },
   create_presentation: {
     name: officeToolkit.create_presentation.name,
     description: officeToolkit.create_presentation.description,

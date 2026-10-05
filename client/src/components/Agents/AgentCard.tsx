@@ -101,6 +101,14 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onSelect, className = '' }
               </p>
             )}
 
+            {agent.dochub?.collection_name && (
+              <p className="mt-1 truncate text-xs text-text-secondary">
+                {localize('com_ui_dochub_collection_caption', {
+                  name: agent.dochub.collection_name,
+                })}
+              </p>
+            )}
+
             <AgentContact
               agent={agent}
               className="mt-1 text-xs text-text-secondary [&_a]:font-normal [&_a]:text-text-secondary"

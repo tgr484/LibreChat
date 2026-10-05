@@ -57,6 +57,7 @@ const {
   getTransactionsConfig,
   checkToolRolePermission,
   resolveToolRolePermissions,
+  DOCHUB_AGENT_TOOL_NAMES,
 } = require('@librechat/api');
 const {
   Time,
@@ -756,7 +757,8 @@ const isBuiltInTool = (toolName) =>
   Boolean(
     manifestToolMap[toolName] ||
       toolkits.some((t) => t.pluginKey === toolName) ||
-      nativeTools.has(toolName),
+      nativeTools.has(toolName) ||
+      DOCHUB_AGENT_TOOL_NAMES.includes(toolName),
   );
 
 /**

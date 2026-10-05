@@ -45,6 +45,7 @@ export type DochubErrorKind =
   | 'account_conflict'
   | 'integration_off'
   | 'collection_not_found'
+  | 'not_manager'
   | 'not_found'
   | 'version_mismatch'
   | 'bad_request'
@@ -58,6 +59,8 @@ export type DochubErrorKind =
   | 'aborted'
   | 'budget';
 
+export type DochubCollectionRole = 'owner' | 'coauthor' | 'viewer';
+
 export interface DochubCollectionSummary {
   id: number;
   name: string;
@@ -65,6 +68,17 @@ export interface DochubCollectionSummary {
   document_count: number;
   /** Absent for the user's own collections. */
   owner_username?: string;
+  /** Sent by DocHub since the «Агенты DocHub» contract; absent on older servers. */
+  is_public?: boolean;
+  role?: DochubCollectionRole;
+}
+
+/** `POST /collections/{id}/publish`; with `dry_run` the lists say what would change. */
+export interface DochubPublishResult {
+  id: number;
+  is_public: boolean;
+  made_public: number[];
+  removed_private: number[];
 }
 
 export interface DochubCollectionsResponse {
@@ -174,10 +188,19 @@ export interface DochubChapterFinding {
   truncated: boolean;
 }
 
+/**
+ * How a document is cited: by page when it has real pages, by section when it
+ * has none — a DOCX is one logical page, so «с. 1» would point nowhere.
+ */
+export type DochubCitation = 'page' | 'section';
+
 export interface DochubReadResult {
   ref: DochubDocumentRef;
   source: 'content' | 'summary';
+  citation: DochubCitation;
   findings: DochubChapterFinding[];
+  /** The whole text of a short document, handed to the chat model unread. */
+  text?: string;
   synthesis: string;
   chaptersTotal: number;
   chaptersRead: number;

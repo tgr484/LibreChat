@@ -44,6 +44,7 @@ const DETAIL_KINDS: Readonly<Record<string, DochubErrorKind>> = {
   forbidden: 'forbidden',
   account_conflict: 'account_conflict',
   collection_not_found: 'collection_not_found',
+  not_manager: 'not_manager',
   not_found: 'not_found',
   version_mismatch: 'version_mismatch',
   rate_limited: 'rate_limited',
@@ -130,6 +131,8 @@ const MODEL_MESSAGES: Readonly<Record<DochubErrorKind, string>> = {
   integration_off:
     'Интеграция с DocHub сейчас выключена на стороне DocHub. Сообщи пользователю, что материалы недоступны.',
   collection_not_found: 'Такой коллекции в DocHub нет. Вызови dochub и выбери коллекцию из списка.',
+  not_manager:
+    'Изменить коллекцию может только её владелец или соавтор. Сообщи об этом пользователю.',
   not_found:
     'Документ недоступен для чтения. Если он входит в коллекцию, попробуй получить только выжимку.',
   version_mismatch:

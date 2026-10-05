@@ -20,14 +20,12 @@ import type { DochubClient } from './client';
 import type { RunBudget } from './budget';
 import { createDochubCatalog, createDochubCatalogStore } from './catalog';
 import { extractFromDocuments, formatExtractResult } from './extract';
-import { isDochubConfigured, resolveDochubConfig } from './config';
 import { formatSurveyResult, surveyCollection } from './survey';
 import { formatReadResult, readDocument } from './reader';
 import { DochubError, describeForModel } from './errors';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
-import { resolveDochubSubject } from './token';
-import { createDochubClient } from './client';
-import { createRunBudget } from './budget';
+import { isDochubConfigured } from './config';
+import { openDochubSession } from './session';
 import { resolveDochubLlm } from './llm';
 
 /**
@@ -41,6 +39,8 @@ const NOT_LDAP_MESSAGE =
   'Интеграция с DocHub доступна только пользователям, вошедшим через корпоративную учётную запись (LDAP). Сообщи об этом пользователю и не повторяй вызов.';
 const NO_IDENTITY_MESSAGE =
   'Учётная запись пользователя не сопоставлена с логином DocHub — нужен администратор. Сообщи об этом пользователю и не повторяй вызов.';
+const PINNED_UNAVAILABLE_MESSAGE =
+  'Коллекция этого агента недоступна пользователю в DocHub: она стала приватной или у пользователя нет доступа. Сообщи об этом пользователю и не повторяй вызов.';
 const NO_LLM_MESSAGE =
   'Не удалось подключить модель для чтения документов DocHub. Сообщи пользователю, что глубокое чтение сейчас недоступно, и опирайся на dochub_search.';
 /** The schema allows 12; the config cannot raise it past that. */
@@ -75,38 +75,30 @@ function storeFor(req: ServerRequest, sub: string): DochubCatalogStore {
  * the only thing shared across the calls of one turn.
  */
 async function withContext(
-  params: { req: ServerRequest; signal?: AbortSignal; toolName: string },
+  params: { req: ServerRequest; signal?: AbortSignal; toolName: string; pinned?: boolean },
   handler: (context: ToolContext) => Promise<string>,
 ): Promise<string> {
-  const config = resolveDochubConfig(params.req.config?.dochub);
-  if (!config) {
-    return 'Интеграция с DocHub не настроена на этом сервере. Сообщи об этом пользователю.';
+  const opened = openDochubSession(params);
+  if (!opened.ok) {
+    if (opened.reason === 'not_configured') {
+      return 'Интеграция с DocHub не настроена на этом сервере. Сообщи об этом пользователю.';
+    }
+    logger.warn(`[dochub] ${params.toolName} refused: ${opened.reason}`);
+    return opened.reason === 'not_ldap' ? NOT_LDAP_MESSAGE : NO_IDENTITY_MESSAGE;
   }
 
-  const subject = resolveDochubSubject(params.req.user);
-  if (!subject.ok) {
-    logger.warn(`[dochub] ${params.toolName} refused: subject ${subject.reason}`);
-    return subject.reason === 'not_ldap' ? NOT_LDAP_MESSAGE : NO_IDENTITY_MESSAGE;
-  }
-
-  const budget = createRunBudget({
-    limits: config.runtime.limits,
-    parentSignal: params.signal,
-  });
-  const client = createDochubClient({
-    config: config.runtime,
-    key: config.key,
-    subject,
-    budget,
-  });
-  const catalog = createDochubCatalog({ client, store: storeFor(params.req, subject.sub) });
+  const { client, budget, config, sub } = opened.session;
+  const catalog = createDochubCatalog({ client, store: storeFor(params.req, sub) });
   const startedAt = Date.now();
 
   try {
     return await handler({ client, catalog, budget, config });
   } catch (error) {
     if (error instanceof DochubError) {
-      return describeForModel(error);
+      const lostCollection = error.kind === 'collection_not_found' || error.kind === 'forbidden';
+      return params.pinned === true && lostCollection
+        ? PINNED_UNAVAILABLE_MESSAGE
+        : describeForModel(error);
     }
     /** A programmer error must not take the whole chat run down with it. */
     logger.error(`[dochub] ${params.toolName} failed`, error);
@@ -114,7 +106,7 @@ async function withContext(
   } finally {
     const spent = budget.spent();
     logger.info(
-      `[dochub] tool=${params.toolName} sub=${subject.sub} http=${spent.http} llm=${spent.llm} ms=${Date.now() - startedAt}`,
+      `[dochub] tool=${params.toolName} sub=${sub} http=${spent.http} llm=${spent.llm} ms=${Date.now() - startedAt}`,
     );
     budget.dispose();
   }
@@ -193,9 +185,13 @@ function formatSearch(
   collectionName: string,
   collectionId: number,
   response: DochubSearchResponse,
+  pinned: boolean,
 ): string {
   if (response.hits.length === 0) {
-    return `Коллекция «${collectionName}» (id ${collectionId}): по запросу ничего не найдено. Попробуй другие формулировки или проверь коллекцию через dochub.`;
+    const hint = pinned
+      ? 'Попробуй другие формулировки; если ответа в коллекции нет, так и скажи пользователю.'
+      : 'Попробуй другие формулировки или проверь коллекцию через dochub.';
+    return `Коллекция «${collectionName}» (id ${collectionId}): по запросу ничего не найдено. ${hint}`;
   }
 
   const lines = [
@@ -232,6 +228,7 @@ export interface CreateDochubToolsParams {
 function describeDocumentMiss(
   collectionName: string,
   resolution: DochubDocumentResolution & { ok: false },
+  searchTool: string,
 ): string {
   const list = resolution.candidates
     .slice(0, 15)
@@ -241,7 +238,7 @@ function describeDocumentMiss(
     return `Под это описание в коллекции «${collectionName}» подходит несколько документов. Уточни номер:\n${list}`;
   }
   const hint = list ? `\nДокументы коллекции (первые):\n${list}` : '';
-  return `Такого документа в коллекции «${collectionName}» нет. Найди нужный через dochub_search и передай его номер (№).${hint}`;
+  return `Такого документа в коллекции «${collectionName}» нет. Найди нужный через ${searchTool} и передай его номер (№).${hint}`;
 }
 
 /** "12-30" or "12"; anything else was already refused by the schema pattern. */
@@ -255,6 +252,118 @@ export function parsePages(value: string | undefined): { from: number; to?: numb
   return to != null && to < from ? { from: to, to: from } : { from, to };
 }
 
+interface SearchArgs {
+  query: string;
+  top_k?: number;
+}
+
+interface ReadArgs {
+  document: string;
+  question: string;
+  scope?: DochubReadScope;
+  pages?: string;
+}
+
+type LlmLoader = (settings: DochubAgentSettings) => Promise<DochubLlm | undefined>;
+
+function createLlmLoader(params: CreateDochubToolsParams): LlmLoader {
+  const { req, agent, db } = params;
+  const resolveLlm =
+    params.resolveLlm ??
+    (async (settings: DochubAgentSettings): Promise<DochubLlm> => {
+      if (!db) {
+        throw new Error('DocHub sub-agent needs credential lookups (db)');
+      }
+      return resolveDochubLlm({ req, agent, settings, db });
+    });
+
+  return async (settings) => {
+    try {
+      return await resolveLlm(settings);
+    } catch (error) {
+      logger.error('[dochub] sub-agent model resolution failed', error);
+      return undefined;
+    }
+  };
+}
+
+/** A pinned agent must never be told about the user's other collections. */
+async function resolveFor(
+  context: ToolContext,
+  collection: string,
+  pinned: boolean,
+): Promise<{ ok: true; id: number; name: string } | { ok: false; message: string }> {
+  const resolved = await context.catalog.resolveCollection(collection);
+  if (resolved.ok) {
+    return resolved;
+  }
+  return {
+    ok: false,
+    message: pinned ? PINNED_UNAVAILABLE_MESSAGE : describeCollectionMiss(resolved),
+  };
+}
+
+async function runList(context: ToolContext, collection: string, pinned = false): Promise<string> {
+  const resolved = await resolveFor(context, collection, pinned);
+  if (!resolved.ok) {
+    return resolved.message;
+  }
+  const refs = await context.catalog.indexDocuments(resolved.id);
+  return formatList(resolved.name, resolved.id, refs);
+}
+
+async function runSearch(
+  context: ToolContext,
+  collection: string,
+  { query, top_k: topK }: SearchArgs,
+  pinned: boolean,
+): Promise<string> {
+  const resolved = await resolveFor(context, collection, pinned);
+  if (!resolved.ok) {
+    return resolved.message;
+  }
+  const settings = context.config.runtime.search;
+  const limited = Math.min(topK ?? settings.defaultTopK, settings.maxTopK);
+  const response = await context.client.search(resolved.id, query, limited);
+  context.catalog.registerHits(resolved.id, response.hits);
+  return formatSearch(resolved.name, resolved.id, response, pinned);
+}
+
+async function runRead(
+  context: ToolContext,
+  loadLlm: LlmLoader,
+  collection: string,
+  { document, question, scope, pages }: ReadArgs,
+  searchTool: string,
+  pinned = false,
+): Promise<string> {
+  const resolved = await resolveFor(context, collection, pinned);
+  if (!resolved.ok) {
+    return resolved.message;
+  }
+  const found = await context.catalog.resolveDocument(resolved.id, document);
+  if (!found.ok) {
+    return describeDocumentMiss(resolved.name, found, searchTool);
+  }
+  const llm = await loadLlm(context.config.runtime.agent);
+  if (!llm) {
+    return NO_LLM_MESSAGE;
+  }
+  const { limits } = context.config.runtime;
+  const result = await readDocument({
+    ref: { ...found.ref, collectionName: resolved.name },
+    question,
+    scope: scope ?? 'auto',
+    pages: parsePages(pages),
+    client: context.client,
+    llm,
+    budget: context.budget,
+    limits,
+    direct: true,
+  });
+  return formatReadResult(result, question, limits.resultCharLimit);
+}
+
 /**
  * The six tools the chat model sees. They are created only when the
  * integration is configured — `loadAndFormatTools` keeps them out of the tool
@@ -262,7 +371,7 @@ export function parsePages(value: string | undefined): { from: number; to?: numb
  * still lists them.
  */
 export function createDochubTools(params: CreateDochubToolsParams): DynamicStructuredTool[] {
-  const { req, signal, agent, db } = params;
+  const { req, signal } = params;
   if (!isDochubConfigured(req.config)) {
     logger.warn('[dochub] tools requested while the integration is not configured');
     return [];
@@ -290,14 +399,9 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
 
   const list = tool(
     async ({ collection }: { collection: string }) =>
-      withContext({ req, signal, toolName: 'dochub_list' }, async (context) => {
-        const resolved = await context.catalog.resolveCollection(collection);
-        if (!resolved.ok) {
-          return describeCollectionMiss(resolved);
-        }
-        const refs = await context.catalog.indexDocuments(resolved.id);
-        return formatList(resolved.name, resolved.id, refs);
-      }),
+      withContext({ req, signal, toolName: 'dochub_list' }, (context) =>
+        runList(context, collection),
+      ),
     {
       name: dochubToolkit.dochub_list.name,
       description: dochubToolkit.dochub_list.description,
@@ -306,26 +410,10 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
   );
 
   const search = tool(
-    async ({
-      collection,
-      query,
-      top_k: topK,
-    }: {
-      collection: string;
-      query: string;
-      top_k?: number;
-    }) =>
-      withContext({ req, signal, toolName: 'dochub_search' }, async (context) => {
-        const resolved = await context.catalog.resolveCollection(collection);
-        if (!resolved.ok) {
-          return describeCollectionMiss(resolved);
-        }
-        const settings = context.config.runtime.search;
-        const limited = Math.min(topK ?? settings.defaultTopK, settings.maxTopK);
-        const response = await context.client.search(resolved.id, query, limited);
-        context.catalog.registerHits(resolved.id, response.hits);
-        return formatSearch(resolved.name, resolved.id, response);
-      }),
+    async ({ collection, ...args }: SearchArgs & { collection: string }) =>
+      withContext({ req, signal, toolName: 'dochub_search' }, (context) =>
+        runSearch(context, collection, args, false),
+      ),
     {
       name: dochubToolkit.dochub_search.name,
       description: dochubToolkit.dochub_search.description,
@@ -333,64 +421,13 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
     },
   );
 
-  const resolveLlm =
-    params.resolveLlm ??
-    (async (settings: DochubAgentSettings): Promise<DochubLlm> => {
-      if (!db) {
-        throw new Error('DocHub sub-agent needs credential lookups (db)');
-      }
-      return resolveDochubLlm({ req, agent, settings, db });
-    });
-
-  const loadLlm = async (settings: DochubAgentSettings): Promise<DochubLlm | undefined> => {
-    try {
-      return await resolveLlm(settings);
-    } catch (error) {
-      logger.error('[dochub] sub-agent model resolution failed', error);
-      return undefined;
-    }
-  };
+  const loadLlm = createLlmLoader(params);
 
   const read = tool(
-    async ({
-      collection,
-      document,
-      question,
-      scope,
-      pages,
-    }: {
-      collection: string;
-      document: string;
-      question: string;
-      scope?: DochubReadScope;
-      pages?: string;
-    }) =>
-      withContext({ req, signal, toolName: 'dochub_read' }, async (context) => {
-        const resolved = await context.catalog.resolveCollection(collection);
-        if (!resolved.ok) {
-          return describeCollectionMiss(resolved);
-        }
-        const found = await context.catalog.resolveDocument(resolved.id, document);
-        if (!found.ok) {
-          return describeDocumentMiss(resolved.name, found);
-        }
-        const llm = await loadLlm(context.config.runtime.agent);
-        if (!llm) {
-          return NO_LLM_MESSAGE;
-        }
-        const { limits } = context.config.runtime;
-        const result = await readDocument({
-          ref: { ...found.ref, collectionName: resolved.name },
-          question,
-          scope: scope ?? 'auto',
-          pages: parsePages(pages),
-          client: context.client,
-          llm,
-          budget: context.budget,
-          limits,
-        });
-        return formatReadResult(result, question, limits.resultCharLimit);
-      }),
+    async ({ collection, ...args }: ReadArgs & { collection: string }) =>
+      withContext({ req, signal, toolName: 'dochub_read' }, (context) =>
+        runRead(context, loadLlm, collection, args, 'dochub_search'),
+      ),
     {
       name: dochubToolkit.dochub_read.name,
       description: dochubToolkit.dochub_read.description,
@@ -503,6 +540,70 @@ export function createDochubTools(params: CreateDochubToolsParams): DynamicStruc
   );
 
   return [collections, list, search, read, extract, survey] as DynamicStructuredTool[];
+}
+
+const UNPINNED_MESSAGE =
+  'Этот агент DocHub не привязан к коллекции. Сообщи пользователю, что агента нужно пересохранить в разделе «Агенты DocHub», и не повторяй вызов.';
+
+/**
+ * The tools of a DocHub agent: the collection is the agent's, never the
+ * model's. Access is still checked by DocHub as the chatting user, and the
+ * id is resolved only within that user's listing. Without a pin the tools
+ * refuse rather than fall back to an unscoped search.
+ */
+export function createDochubAgentTools(params: CreateDochubToolsParams): DynamicStructuredTool[] {
+  const { req, signal, agent } = params;
+  if (!isDochubConfigured(req.config)) {
+    logger.warn('[dochub] agent tools requested while the integration is not configured');
+    return [];
+  }
+
+  const collectionId = agent?.dochub?.collection_id;
+  const pinned = async (
+    toolName: string,
+    handler: (context: ToolContext, collection: string) => Promise<string>,
+  ): Promise<string> => {
+    if (collectionId == null) {
+      logger.warn(`[dochub] ${toolName} refused: agent has no pinned collection`);
+      return UNPINNED_MESSAGE;
+    }
+    return withContext({ req, signal, toolName, pinned: true }, (context) =>
+      handler(context, String(collectionId)),
+    );
+  };
+  const loadLlm = createLlmLoader(params);
+  const { dochub_agent_list, dochub_agent_search, dochub_agent_read } = dochubToolkit;
+
+  const list = tool(
+    async () =>
+      pinned(dochub_agent_list.name, (context, collection) => runList(context, collection, true)),
+    dochub_agent_list,
+  );
+
+  const search = tool(
+    async (args: SearchArgs) =>
+      pinned(dochub_agent_search.name, (context, collection) =>
+        runSearch(context, collection, args, true),
+      ),
+    dochub_agent_search,
+  );
+
+  const read = tool(
+    async (args: ReadArgs) =>
+      pinned(dochub_agent_read.name, (context, collection) =>
+        runRead(
+          context,
+          loadLlm,
+          collection,
+          { ...args, scope: 'auto' },
+          dochub_agent_search.name,
+          true,
+        ),
+      ),
+    dochub_agent_read,
+  );
+
+  return [list, search, read] as DynamicStructuredTool[];
 }
 
 export type { DochubDocumentRef };

@@ -8,11 +8,12 @@ import type { IUser } from '@librechat/data-schemas';
 import type { AddressInfo } from 'node:net';
 import type { ServerRequest } from '~/types';
 import type { DochubLlm } from './llm';
+import { createDochubTools, createDochubAgentTools, parsePages } from './tools';
 import { toolDefinitions } from '~/tools/registry/definitions';
 import { toolkitExpansion } from '~/tools/toolkits/mapping';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
-import { createDochubTools, parsePages } from './tools';
 import { resetDochubConfigCache } from './config';
+import { clearContentCache } from './cache';
 import { NO_DATA } from './prompts';
 
 const dir = mkdtempSync(join(tmpdir(), 'dochub-tools-'));
@@ -57,6 +58,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   resetDochubConfigCache();
+  clearContentCache();
   requests = [];
   routes = {
     'GET /api/integration/v1/collections': () => ({
@@ -355,8 +357,71 @@ describe('dochub_read', () => {
     });
   });
 
+  it('hands a short document to the chat model whole, without a sub-agent call', async () => {
+    let llmCalls = 0;
+    const counting: DochubLlm = {
+      ...stubLlm,
+      invoke: async (prompt, budget, phase) => {
+        llmCalls += 1;
+        return stubLlm.invoke(prompt, budget, phase);
+      },
+    };
+    const result = await createDochubTools({ req: makeReq({}), resolveLlm: async () => counting })
+      .find((candidate) => candidate.name === 'dochub_read')!
+      .invoke({
+        collection: 'Нефтяное хозяйство 2018',
+        document: '№3',
+        question: 'Как испытывали турбодетандер?',
+      });
+
+    expect(result).toContain('Документ короткий и приведён целиком');
+    expect(result).toContain(
+      '--- ТЕКСТ ДОКУМЕНТА ---\n<!-- page: 12 -->\nтурбодетандер испытан на стенде',
+    );
+    expect(result).toContain('[№3, с. N]');
+    expect(llmCalls).toBe(0);
+  });
+
+  it('serves a repeated read of the same version from the cache', async () => {
+    const read = () =>
+      toolByName(makeReq({}), 'dochub_read').invoke({
+        collection: 'Нефтяное хозяйство 2018',
+        document: '№3',
+        question: 'Как испытывали турбодетандер?',
+      });
+    await read();
+    await read();
+
+    const outline = requests.filter((line) => line.endsWith('/documents/103/outline'));
+    const content = requests.filter((line) => line.endsWith('/documents/103/content'));
+    expect(outline).toHaveLength(2);
+    expect(content).toHaveLength(1);
+  });
+
+  it('reads the text for an agent even when the model asks for the summary', async () => {
+    const read = createDochubAgentTools({
+      req: makeReq({}),
+      agent: { dochub: { collection_id: 7 } },
+      resolveLlm: async () => stubLlm,
+    }).find((candidate) => candidate.name === 'dochub_agent_read')!;
+    await read.invoke({ document: '№3', question: 'Как испытывали?', scope: 'summary' });
+
+    expect(requests).toContain('GET /api/integration/v1/documents/103/content');
+    expect(requests.some((request) => request.endsWith('/summary'))).toBe(false);
+  });
+
   it('reads a document by its number and returns a condensed answer', async () => {
-    const result = await toolByName(makeReq({}), 'dochub_read').invoke({
+    const req = makeReq(
+      {},
+      {
+        enabled: true,
+        baseURL,
+        keyId: 'test',
+        privateKeyPath: keyPath,
+        limits: { wallClockMs: 10000, reduceReserveMs: 1000, directReadTokens: 0 },
+      },
+    );
+    const result = await toolByName(req, 'dochub_read').invoke({
       collection: 'Нефтяное хозяйство 2018',
       document: '№3',
       question: 'Как испытывали турбодетандер?',
@@ -512,5 +577,60 @@ describe('dochub_extract', () => {
 
     expect(result).toContain('Разобрано документов: 1 из 1.');
     expect(result).not.toContain('№11');
+  });
+});
+
+describe('createDochubAgentTools', () => {
+  const pinnedTool = (req: ServerRequest, collectionId: number | undefined, name: string) => {
+    const tools = createDochubAgentTools({
+      req,
+      agent: collectionId != null ? { dochub: { collection_id: collectionId } } : {},
+      resolveLlm: async () => stubLlm,
+    });
+    const found = tools.find((candidate) => candidate.name === name);
+    if (!found) {
+      throw new Error(`no ${name}`);
+    }
+    return found;
+  };
+
+  it('builds only the three pinned tools, without a collection parameter', () => {
+    const tools = createDochubAgentTools({
+      req: makeReq({}),
+      agent: { dochub: { collection_id: 7 } },
+    });
+    expect(tools.map((candidate) => candidate.name)).toEqual([
+      'dochub_agent_list',
+      'dochub_agent_search',
+      'dochub_agent_read',
+    ]);
+    for (const name of ['dochub_agent_list', 'dochub_agent_search', 'dochub_agent_read'] as const) {
+      expect(dochubToolkit[name].schema.properties).not.toHaveProperty('collection');
+      expect(toolDefinitions[name]).toBeDefined();
+    }
+    expect(dochubToolkit.dochub_agent_read.schema.properties).not.toHaveProperty('scope');
+    expect(dochubToolkit.dochub_read.schema.properties).toHaveProperty('scope');
+  });
+
+  it('searches the pinned collection whatever the model asks for', async () => {
+    const search = pinnedTool(makeReq({}), 7, 'dochub_agent_search');
+    const result = await search.invoke({ query: 'испытания', collection: 'Инструкции по бурению' });
+    expect(result).toContain('Испытания турбодетандера');
+    expect(requests).toContain('POST /api/integration/v1/collections/7/search');
+    expect(requests).not.toContain('POST /api/integration/v1/collections/19/search');
+  });
+
+  it('refuses a pin outside the user listing without searching', async () => {
+    const search = pinnedTool(makeReq({}), 999, 'dochub_agent_search');
+    const result = await search.invoke({ query: 'испытания' });
+    expect(result).toContain('Коллекция этого агента недоступна');
+    expect(result).not.toContain('Нефтяное хозяйство');
+    expect(requests.some((request) => request.includes('/search'))).toBe(false);
+  });
+
+  it('refuses without a pin and never calls DocHub', async () => {
+    const list = pinnedTool(makeReq({}), undefined, 'dochub_agent_list');
+    await expect(list.invoke({})).resolves.toContain('не привязан к коллекции');
+    expect(requests).toEqual([]);
   });
 });

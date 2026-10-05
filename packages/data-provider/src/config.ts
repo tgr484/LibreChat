@@ -2137,6 +2137,14 @@ export type TStartupConfig = {
   };
   fileUploadSseEnabled?: boolean;
   endpointsDropParamsMap?: EndpointsDropParamsMap;
+  /** Present when DocHub agents can be created: the fixed endpoint/model and the Office default. */
+  dochubAgents?: TDochubAgentsStartup;
+};
+
+export type TDochubAgentsStartup = {
+  endpoint: string;
+  model: string;
+  office: boolean;
 };
 
 export type TSharedLinkStartupInterface = Pick<
@@ -2398,7 +2406,13 @@ export const dochubLimitsSchema = z.object({
   chapterConcurrency: z.number().int().positive().max(16).default(4),
   documentConcurrency: z.number().int().positive().max(8).default(3),
   extractionCharLimit: z.number().int().positive().default(1200),
-  resultCharLimit: z.number().int().positive().default(6000),
+  /** Size of one tool answer in the chat context; the sub-agent is asked to fit into it. */
+  resultCharLimit: z.number().int().positive().default(32000),
+  /**
+   * A document up to this many tokens reaches the chat model whole instead of
+   * as a sub-agent summary: no extra model call, no paraphrase. 0 turns it off.
+   */
+  directReadTokens: z.number().int().nonnegative().default(16000),
 });
 
 export const dochubAgentSchema = z.object({
@@ -2407,7 +2421,8 @@ export const dochubAgentSchema = z.object({
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).default(0),
   /** Russian text is ~3 characters per token: the 6000-character reduce needs ~2000. */
-  maxOutputTokens: z.number().int().positive().default(3000),
+  /** Enough for a `resultCharLimit` answer: Russian runs about 3 characters per token. */
+  maxOutputTokens: z.number().int().positive().default(12000),
   /**
    * `false` sends `chat_template_kwargs.enable_thinking: false` (vLLM/SGLang
    * Qwen) on custom endpoints: extraction does not need reasoning, and
@@ -2424,6 +2439,19 @@ export const dochubSearchSchema = z.object({
   slotRetryDelayMs: z.number().int().positive().default(4000),
 });
 
+/**
+ * «Агенты DocHub»: agents pinned to one collection, created from a trimmed
+ * builder. The model is the operator's choice, not the user's.
+ */
+export const dochubAgentsSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Endpoint the agents run on — for a custom endpoint, its `name`. */
+  endpoint: z.string().optional(),
+  model: z.string().optional(),
+  /** Word, PowerPoint and Excel generation on new agents by default. */
+  office: z.boolean().default(true),
+});
+
 export const dochubSchema = z.object({
   enabled: z.boolean().default(false),
   baseURL: z.string().optional(),
@@ -2438,6 +2466,7 @@ export const dochubSchema = z.object({
   agent: dochubAgentSchema.optional(),
   limits: dochubLimitsSchema.optional(),
   search: dochubSearchSchema.optional(),
+  agents: dochubAgentsSchema.optional(),
 });
 
 export type TDochubConfig = DeepPartial<z.infer<typeof dochubSchema>>;
@@ -2685,6 +2714,33 @@ export const langfuseConfigSchema = z.object({
 
 export type LangfuseConfig = z.infer<typeof langfuseConfigSchema>;
 
+/**
+ * Reasoning on demand: a classifier decides per message whether the model
+ * should think (`chat_template_kwargs.enable_thinking`) on custom gateways.
+ */
+export const thinkingClassifierSchema = z.object({
+  /** Endpoint the classifier runs on — for a custom endpoint, its `name`. */
+  endpoint: z.string(),
+  model: z.string(),
+  /** On expiry the message is answered with `fallback`. */
+  timeoutMs: z.number().int().positive().default(8000),
+  /** Longer messages are cut: the classifier needs the gist, not the whole text. */
+  maxInputChars: z.number().int().positive().default(4000),
+  /** Replaces the built-in instruction; must ask for exactly `simple` or `complex`. */
+  prompt: z.string().optional(),
+});
+
+export const thinkingSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Custom endpoints (by `name`) whose chats the classifier controls. */
+  endpoints: z.array(z.string()).min(1),
+  classifier: thinkingClassifierSchema,
+  /** Used when the classifier fails, times out or the message has no text. */
+  fallback: z.boolean().default(false),
+});
+
+export type TThinkingConfig = z.infer<typeof thinkingSchema>;
+
 export const configSchema = z.object({
   version: z.string(),
   cache: z.boolean().default(true),
@@ -2693,6 +2749,7 @@ export const configSchema = z.object({
   langfuse: langfuseConfigSchema.optional(),
   memory: memorySchema.optional(),
   dochub: dochubSchema.optional(),
+  thinking: thinkingSchema.optional(),
   summarization: summarizationConfigSchema.optional(),
   skillSync: skillSyncConfigSchema,
   secureImageLinks: z.boolean().optional(),

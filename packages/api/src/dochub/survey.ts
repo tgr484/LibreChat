@@ -17,6 +17,7 @@ import { surveyReducePrompt } from './prompts';
 import { mapWithConcurrency } from './budget';
 import { readDocument } from './reader';
 import { DochubError } from './errors';
+import { clipAnswer } from './clip';
 
 export type DochubSurveyDepth = 'summaries' | 'full';
 
@@ -289,5 +290,5 @@ export function formatSurveyResult(
     lines.push('', ...allNotes);
   }
   const text = lines.join('\n');
-  return text.length <= limit ? text : `${text.slice(0, limit - 20)}\n…(ответ обрезан)`;
+  return clipAnswer(text, limit);
 }

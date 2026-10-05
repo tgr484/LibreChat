@@ -13,6 +13,7 @@ import * as m from './types/mutations';
 import * as ag from './types/agents';
 import * as q from './types/queries';
 import * as sk from './types/skills';
+import * as dh from './types/dochub';
 import * as f from './types/files';
 import * as config from './config';
 import request from './request';
@@ -710,6 +711,7 @@ export const getMarketplaceAgents = (params: {
   limit?: number;
   cursor?: string;
   promoted?: 0 | 1;
+  dochub?: 0 | 1;
 }): Promise<a.AgentListResponse> => {
   return request.get(
     endpoints.agents({
@@ -718,6 +720,17 @@ export const getMarketplaceAgents = (params: {
     }),
   );
 };
+
+/* DocHub agents */
+
+export const getDochubCollections = (): Promise<dh.TDochubCollectionsResponse> =>
+  request.get(endpoints.dochubCollections());
+
+export const publishDochubCollection = ({
+  collectionId,
+  dryRun,
+}: dh.TDochubPublishParams): Promise<dh.TDochubPublishResponse> =>
+  request.post(endpoints.dochubPublishCollection(collectionId, dryRun));
 
 /* Tools */
 
