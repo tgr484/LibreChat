@@ -51,6 +51,7 @@ export * from './skills';
 export * from './phases';
 export * from './stepBudget';
 export * from './startup';
+export { resolveThinkingEndpoints } from './thinking';
 export * from './subagentThreads';
 export * from './subagentActivity';
 export * from './subagentCompletionWakeup';

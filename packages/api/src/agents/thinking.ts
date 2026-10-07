@@ -1,5 +1,6 @@
 import { logger } from '@librechat/data-schemas';
 import type { TThinkingConfig } from 'librechat-data-provider';
+import type { AppConfig } from '@librechat/data-schemas';
 import type { EndpointDbMethods, EndpointRuntimeContext } from '~/types';
 import {
   extractText,
@@ -11,7 +12,7 @@ import {
 
 export interface ThinkingDecision {
   enabled: boolean;
-  source: 'classifier' | 'fallback' | 'dochub';
+  source: 'classifier' | 'fallback' | 'dochub' | 'user';
 }
 
 /** Test seam: answers the classifier prompt; the server builds it from the config. */
@@ -142,6 +143,11 @@ export function startThinkingDecision(params: {
   if (!config?.enabled || !config.endpoints.includes(params.endpoint)) {
     return undefined;
   }
+  const choice = params.runtime.requestBody.ephemeralAgent?.thinking;
+  if (choice === 'on' || choice === 'off') {
+    logger.info(`[thinking] ${choice} by the user's choice`);
+    return Promise.resolve({ enabled: choice === 'on', source: 'user' });
+  }
   const existing = decisions.get(params.key);
   if (existing) {
     return existing;
@@ -164,4 +170,15 @@ export function applyThinkingDecision<T extends { modelKwargs?: Record<string, u
     return llmConfig;
   }
   return { ...llmConfig, modelKwargs: withEnableThinking(llmConfig.modelKwargs, decision.enabled) };
+}
+
+/**
+ * Endpoints whose chats offer the reasoning choice (auto / on / off): those the
+ * classifier controls. Undefined when the classifier is off.
+ */
+export function resolveThinkingEndpoints(
+  appConfig: Pick<AppConfig, 'thinking'> | undefined,
+): string[] | undefined {
+  const config = appConfig?.thinking;
+  return config?.enabled ? [...config.endpoints] : undefined;
 }

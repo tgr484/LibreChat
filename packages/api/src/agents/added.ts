@@ -17,10 +17,10 @@ import {
   validateMCPServerConfig,
 } from '~/mcp/utils';
 import { ASK_USER_QUESTION_TOOL_NAME } from '~/agents/hitl/askUserQuestionTool';
+import { ephemeralArtifacts, ephemeralOfficeTools } from './ephemeral';
 import { synthesizeBackgroundToolOptions } from '~/agents/background';
 import { mergeSynthesizedToolOptions } from '~/agents/selection';
 import { synthesizeIntentToolOptions } from '~/agents/intent';
-import { OFFICE_TOOL_NAMES } from '~/tools/toolkits/office';
 import { getCustomEndpointConfig } from '~/app/config';
 
 const { mcp_all, mcp_delimiter } = Constants;
@@ -230,9 +230,7 @@ export async function loadAddedAgent(
   if (ephemeralAgent?.memory === true || modelSpec?.memory === true) {
     tools.push(Tools.memory);
   }
-  if (ephemeralAgent?.office === true || modelSpec?.office === true) {
-    tools.push(...OFFICE_TOOL_NAMES);
-  }
+  tools.push(...ephemeralOfficeTools(modelSpec));
   /** Mirror the primary ephemeral loader (`loadEphemeralAgent`) so a model
    *  spec's Ask User flag equips the added top-level agent too; downstream
    *  `createRun` gating (hitlCapable, non-subagent, admin filter) is uniform. */
@@ -309,8 +307,9 @@ export async function loadAddedAgent(
     tools,
   };
 
-  if (ephemeralAgent?.artifacts != null && ephemeralAgent.artifacts) {
-    result.artifacts = ephemeralAgent.artifacts;
+  const artifacts = ephemeralArtifacts(modelSpec);
+  if (artifacts) {
+    result.artifacts = artifacts;
   }
   applyModelSpecSubagents(result, modelSpec);
   applyModelSpecSkills(result, modelSpec);

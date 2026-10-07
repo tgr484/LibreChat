@@ -23,6 +23,7 @@ const {
   createPresentationTool,
   createDocumentTool,
   createSpreadsheetTool,
+  buildOfficeToolContext,
   SET_MEMORY_TOOL_NAME,
   buildWebSearchContext,
   DELETE_MEMORY_TOOL_NAME,
@@ -272,21 +273,30 @@ const loadTools = async ({
     dochub_agent_list: loadDochubAgentTool('dochub_agent_list'),
     dochub_agent_search: loadDochubAgentTool('dochub_agent_search'),
     dochub_agent_read: loadDochubAgentTool('dochub_agent_read'),
-    create_presentation: async () => [
-      createPresentationTool({
-        saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
-      }),
-    ],
-    create_document: async () => [
-      createDocumentTool({
-        saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
-      }),
-    ],
-    create_spreadsheet: async () => [
-      createSpreadsheetTool({
-        saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
-      }),
-    ],
+    create_presentation: async (toolContextMap) => {
+      toolContextMap.office = buildOfficeToolContext();
+      return [
+        createPresentationTool({
+          saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
+        }),
+      ];
+    },
+    create_document: async (toolContextMap) => {
+      toolContextMap.office = buildOfficeToolContext();
+      return [
+        createDocumentTool({
+          saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
+        }),
+      ];
+    },
+    create_spreadsheet: async (toolContextMap) => {
+      toolContextMap.office = buildOfficeToolContext();
+      return [
+        createSpreadsheetTool({
+          saveFile: (file) => saveGeneratedFile({ req: options.req, ...file }),
+        }),
+      ];
+    },
     image_gen_oai: async (_toolContextMap, dynamicToolContextMap) => {
       const authFields = getAuthFields('image_gen_oai');
       const authValues = await loadAuthValues({ userId: user, authFields });

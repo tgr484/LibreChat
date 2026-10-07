@@ -22,10 +22,10 @@ import {
   validateMCPServerConfig,
 } from '~/mcp/utils';
 import { ASK_USER_QUESTION_TOOL_NAME } from '~/agents/hitl/askUserQuestionTool';
+import { ephemeralArtifacts, ephemeralOfficeTools } from './ephemeral';
 import { synthesizeBackgroundToolOptions } from '~/agents/background';
 import { mergeSynthesizedToolOptions } from '~/agents/selection';
 import { synthesizeIntentToolOptions } from '~/agents/intent';
-import { OFFICE_TOOL_NAMES } from '~/tools/toolkits/office';
 import { getCustomEndpointConfig } from '~/app/config';
 
 const { mcp_all, mcp_delimiter } = Constants;
@@ -112,9 +112,7 @@ export async function loadEphemeralAgent(
   if (ephemeralAgent?.memory === true || modelSpec?.memory === true) {
     tools.push(Tools.memory);
   }
-  if (ephemeralAgent?.office === true || modelSpec?.office === true) {
-    tools.push(...OFFICE_TOOL_NAMES);
-  }
+  tools.push(...ephemeralOfficeTools(modelSpec));
   /** Same downstream gating as persisted agents applies: `createRun` only
    *  equips the tool when the request is HITL-capable, the agent is not a
    *  subagent, and the admin hasn't excluded it (filteredTools/includedTools). */
@@ -204,8 +202,9 @@ export async function loadEphemeralAgent(
     result.tool_options = mergeSynthesizedToolOptions(result.tool_options, intentToolOptions);
   }
 
-  if (ephemeralAgent?.artifacts) {
-    result.artifacts = ephemeralAgent.artifacts;
+  const artifacts = ephemeralArtifacts(modelSpec);
+  if (artifacts) {
+    result.artifacts = artifacts;
   }
   if (modelSpec?.subagents) {
     result.subagents = modelSpec.subagents;

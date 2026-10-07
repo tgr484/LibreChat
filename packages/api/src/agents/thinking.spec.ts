@@ -9,6 +9,7 @@ import {
   buildClassifierPrompt,
   parseClassifierAnswer,
   startThinkingDecision,
+  resolveThinkingEndpoints,
 } from './thinking';
 import { getProviderConfig } from '~/endpoints/config/providers';
 
@@ -195,6 +196,57 @@ describe('startThinkingDecision', () => {
     });
   });
 
+  it("follows the user's choice without asking the classifier", async () => {
+    const withChoice = (thinkingChoice: unknown): EndpointRuntimeContext => {
+      const context = runtime('Сравни три архитектуры и оцени риски');
+      return {
+        ...context,
+        requestBody: {
+          ...context.requestBody,
+          ephemeralAgent: { thinking: thinkingChoice as 'on' },
+        },
+      };
+    };
+
+    await expect(decide(withChoice('on'))).resolves.toEqual({ enabled: true, source: 'user' });
+    reply = 'complex';
+    await expect(decide(withChoice('off'))).resolves.toEqual({ enabled: false, source: 'user' });
+    expect(received).toHaveLength(0);
+
+    /** Anything else is «auto»: the classifier decides. */
+    await expect(decide(withChoice('maybe'))).resolves.toEqual({
+      enabled: true,
+      source: 'classifier',
+    });
+    expect(received).toHaveLength(1);
+  });
+
+  it("ignores the user's choice where the classifier does not run", () => {
+    const context = runtime('вопрос');
+    expect(
+      decide(
+        { ...context, requestBody: { ...context.requestBody, ephemeralAgent: { thinking: 'on' } } },
+        'openAI',
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps a DocHub agent's setting over the user's choice", async () => {
+    const context = runtime('вопрос');
+    await expect(
+      startThinkingDecision({
+        key: {},
+        endpoint: 'RNT',
+        runtime: {
+          ...context,
+          requestBody: { ...context.requestBody, ephemeralAgent: { thinking: 'on' } },
+        },
+        db,
+        dochubAgent: true,
+      }),
+    ).resolves.toEqual({ enabled: false, source: 'dochub' });
+  });
+
   it('asks the classifier model with reasoning off and the proxy headers', async () => {
     await expect(decide(runtime('Сравни три архитектуры и оцени риски'))).resolves.toEqual({
       enabled: true,
@@ -300,5 +352,13 @@ describe('applyThinkingDecision', () => {
     expect(applyThinkingDecision(llmConfig, decision, { overrideProvider: 'openAI' })).toBe(
       llmConfig,
     );
+  });
+});
+
+describe('resolveThinkingEndpoints', () => {
+  it('lists the controlled endpoints only while the classifier is on', () => {
+    expect(resolveThinkingEndpoints(appConfig())).toEqual(['RNT']);
+    expect(resolveThinkingEndpoints(appConfig(thinking({ enabled: false })))).toBeUndefined();
+    expect(resolveThinkingEndpoints({} as AppConfig)).toBeUndefined();
   });
 });

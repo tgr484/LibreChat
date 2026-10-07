@@ -64,6 +64,7 @@ import TokenUsage from './TokenUsage';
 import StopButton from './StopButton';
 import SendButton from './SendButton';
 import EditBadges from './EditBadges';
+import Thinking from './Thinking';
 import BadgeRow from './BadgeRow';
 import Mention from './Mention';
 import store from '~/store';
@@ -791,6 +792,13 @@ const ChatForm = memo(function ChatForm({
                     Array.isArray(conversation?.messages) && conversation.messages.length >= 1
                   }
                 />
+                {!hideBadgeRow && (
+                  <Thinking
+                    conversationId={conversationId}
+                    endpoint={conversation?.endpoint}
+                    disabled={disableInputs || isSubmitting}
+                  />
+                )}
                 <CodeApprovalMenu
                   conversation={conversation}
                   addedConversation={addedConvo}

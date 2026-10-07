@@ -2139,6 +2139,8 @@ export type TStartupConfig = {
   endpointsDropParamsMap?: EndpointsDropParamsMap;
   /** Present when DocHub agents can be created: the fixed endpoint/model and the Office default. */
   dochubAgents?: TDochubAgentsStartup;
+  /** Endpoints whose chats offer the reasoning choice (auto / on / off). */
+  thinkingEndpoints?: string[];
 };
 
 export type TDochubAgentsStartup = {

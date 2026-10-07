@@ -105,6 +105,8 @@ export type TEndpointOption = Pick<
   clientOptions?: Record<string, unknown>;
 };
 
+export type TThinkingMode = 'on' | 'off';
+
 export type TEphemeralAgent = {
   mcp?: string[];
   web_search?: boolean;
@@ -113,8 +115,13 @@ export type TEphemeralAgent = {
   artifacts?: string;
   skills?: boolean;
   memory?: boolean;
-  /** Equips `create_document` (Word) and `create_presentation` (PowerPoint). */
+  /** No longer read: Office tools are on in every plain chat unless a model spec turns them off. */
   office?: boolean;
+  /**
+   * The user's reasoning choice on endpoints the `thinking` classifier
+   * controls: `on`/`off` override it, absent means the classifier decides.
+   */
+  thinking?: TThinkingMode;
   /** Equip the ephemeral agent with the `ask_user_question` HITL tool. */
   ask_user_question?: boolean;
   /**
