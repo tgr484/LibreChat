@@ -274,6 +274,18 @@ function documentText(texts: readonly string[], citation: DochubCitation): strin
         .trim();
 }
 
+/**
+ * The text itself when the chat model may take it whole (`direct`) and it
+ * fits `directReadTokens`; null otherwise, so the caller condenses it.
+ */
+async function directText(params: ReadContext, raw: string): Promise<string | null> {
+  if (params.direct !== true || params.limits.directReadTokens <= 0) {
+    return null;
+  }
+  const text = documentText([raw], params.citation);
+  return (await countTokens(text)) <= params.limits.directReadTokens ? text : null;
+}
+
 /** A summary keeps the gist, not the figures: its silence proves nothing about the document. */
 const SUMMARY_ONLY_NOTE =
   '⚠ Это ответ по выжимке, а не по полному тексту: числа, время, сроки и конкретные требования в выжимке могут отсутствовать. Если ответа здесь нет или он неполный, повтори вызов со scope=full и не делай вывод, что в документе этого нет.';
@@ -602,6 +614,24 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
         pageFrom: params.pages.from,
         pageTo: params.pages.to,
       });
+      if (content.truncated) {
+        notes.push('⚠ Диапазон страниц слишком велик и прочитан не полностью — сузь его.');
+      }
+      const whole = await directText(paged, content.text);
+      if (whole != null) {
+        return {
+          ref,
+          source: 'content',
+          citation: paged.citation,
+          findings: [],
+          text: whole,
+          pageRange: `${content.page_from ?? params.pages.from}–${content.page_to ?? params.pages.to ?? params.pages.from}`,
+          synthesis: '',
+          chaptersTotal: 1,
+          chaptersRead: 1,
+          notes: [...notes, ...budget.notes()],
+        };
+      }
       const chapter: DochubChapter = {
         index: 0,
         heading: null,
@@ -620,9 +650,6 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
           truncated: content.truncated,
         },
       ];
-      if (content.truncated) {
-        notes.push('⚠ Диапазон страниц слишком велик и прочитан не полностью — сузь его.');
-      }
       return {
         ref,
         source: 'content',
@@ -731,7 +758,7 @@ function formatDocumentText(result: DochubReadResult, question: string): string 
   const { ref } = result;
   const notes = result.notes.length > 0 ? `\n${result.notes.join('\n')}` : '';
   return `№${ref.seq} «${ref.title}» (коллекция «${ref.collectionName}»)
-Документ короткий и приведён целиком. Ответь на вопрос «${question}» сам, строго по этому тексту; числа, время, сроки и суммы приводи дословно. ${TEXT_CITATION[result.citation](ref.seq)}${notes}
+${result.pageRange != null ? `Приведены страницы ${result.pageRange} документа.` : 'Документ короткий и приведён целиком.'} Ответь на вопрос «${question}» сам, строго по этому тексту; числа, время, сроки и суммы приводи дословно. ${TEXT_CITATION[result.citation](ref.seq)}${notes}
 
 --- ТЕКСТ ДОКУМЕНТА ---
 ${result.text}

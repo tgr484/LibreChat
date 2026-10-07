@@ -590,6 +590,46 @@ describe('readDocument — document changes and access', () => {
     expect(result.findings[0]).toMatchObject({ pageFrom: 12, pageTo: 14 });
   });
 
+  it('hands a page range that fits to the chat model whole, without a model call', async () => {
+    const { promise, prompts } = run(
+      {
+        pages: (from, to) => ({
+          ...content(0, '<!-- page: 12 -->\nтурбодетандер на с. 12'),
+          chapter: null,
+          page_from: from,
+          page_to: to ?? from,
+        }),
+      },
+      { pages: { from: 12, to: 14 }, direct: true, limits: limits({ directReadTokens: 16000 }) },
+    );
+
+    const result = await promise;
+    expect(prompts).toHaveLength(0);
+    expect(result.text).toContain('турбодетандер на с. 12');
+    expect(result.pageRange).toBe('12–14');
+    expect(formatReadResult(result, 'вопрос', 32000)).toContain(
+      'Приведены страницы 12–14 документа.',
+    );
+  });
+
+  it('condenses a page range too long for the chat model', async () => {
+    const { promise, prompts } = run(
+      {
+        pages: (from, to) => ({
+          ...content(0, 'турбодетандер '.repeat(400)),
+          chapter: null,
+          page_from: from,
+          page_to: to ?? from,
+        }),
+      },
+      { pages: { from: 12, to: 14 }, direct: true, limits: limits({ directReadTokens: 50 }) },
+    );
+
+    const result = await promise;
+    expect(result.text).toBeUndefined();
+    expect(prompts.length).toBeGreaterThan(0);
+  });
+
   it('reads by chapters when the document has no page markup', async () => {
     const { promise, calls } = run(
       {

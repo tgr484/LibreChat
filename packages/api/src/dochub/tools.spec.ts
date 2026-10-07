@@ -734,6 +734,23 @@ describe('dochub_agent_search inlining', () => {
     expect(requests).not.toContain(CONTENT);
   });
 
+  it('answers a read of an inlined document without reading it again', async () => {
+    const { tool: search, req } = agentTool('dochub_agent_search');
+    await search.invoke({ query: 'авансовый отчёт' });
+    const before = requests.length;
+    const read = createDochubAgentTools({
+      req,
+      agent: { dochub: { collection_id: 7 } },
+      resolveLlm: async () => {
+        throw new Error('no model call expected');
+      },
+    }).find((candidate) => candidate.name === 'dochub_agent_read')!;
+    const result = await read.invoke({ document: '№3', question: 'Срок?', pages: '1-30' });
+
+    expect(result).toContain('уже приведён в результате dochub_agent_search выше');
+    expect(requests.length).toBe(before);
+  });
+
   it('skips a short text cut into many chapters', async () => {
     routes[OUTLINE] = () => ({
       status: 200,

@@ -443,6 +443,9 @@ async function runRead(
   if (!found.ok) {
     return describeDocumentMiss(resolved.name, found, searchTool);
   }
+  if (pinned && context.catalog.inlined.has(found.ref.id)) {
+    return `Полный текст документа №${found.ref.seq} «${found.ref.title}» уже приведён в результате ${searchTool} выше. Ответь на вопрос «${question}» по этому тексту, читать документ снова не нужно.`;
+  }
   const llm = await loadLlm(context.config.runtime.agent);
   if (!llm) {
     return NO_LLM_MESSAGE;
