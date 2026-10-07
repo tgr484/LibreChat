@@ -36,6 +36,7 @@ export type TDochubErrorCode =
   | 'dochub_collection_unavailable'
   | 'dochub_collection_private'
   | 'dochub_collection_locked'
+  | 'dochub_model_unavailable'
   | 'dochub_not_manager'
   | 'dochub_publish_unsupported'
   | 'dochub_unavailable';
