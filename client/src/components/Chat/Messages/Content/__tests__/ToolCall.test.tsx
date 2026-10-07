@@ -21,6 +21,7 @@ jest.mock('~/hooks', () => ({
       com_ui_via_server: `via ${values?.[0]}`,
       com_ui_tool_failed: 'failed',
       com_ui_tool_name_set_memory: 'Save Memory',
+      com_ui_dochub_search_done: `Searched «${values?.[0]}»`,
     };
     return translations[key] || key;
   },
@@ -105,6 +106,7 @@ jest.mock('~/utils', () => ({
   cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
   getToolDisplayLabel: (name: string, localize: (key: string) => string) =>
     name === 'set_memory' ? localize('com_ui_tool_name_set_memory') : name,
+  getDochubProgressLabels: jest.requireActual('~/utils/toolLabels').getDochubProgressLabels,
 }));
 
 describe('ToolCall', () => {
@@ -163,6 +165,13 @@ describe('ToolCall', () => {
 
     expect(screen.getByTestId('progress-text')).toHaveTextContent('Completed Save Memory');
     expect(screen.queryByText(/set_memory/)).not.toBeInTheDocument();
+  });
+
+  it('says what a DocHub search looked for', () => {
+    renderWithRecoil(
+      <ToolCall {...mockProps} name="dochub_agent_search" args='{"query":"отпуск"}' />,
+    );
+    expect(screen.getByTestId('progress-text')).toHaveTextContent('Searched «отпуск»');
   });
 
   it('keeps expanded tool content close to its header', () => {

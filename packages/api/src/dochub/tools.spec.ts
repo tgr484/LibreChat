@@ -634,3 +634,171 @@ describe('createDochubAgentTools', () => {
     expect(requests).toEqual([]);
   });
 });
+
+describe('dochub_agent_search inlining', () => {
+  const OUTLINE = 'GET /api/integration/v1/documents/103/outline';
+  const CONTENT = 'GET /api/integration/v1/documents/103/content';
+  const SEARCH = 'POST /api/integration/v1/collections/7/search';
+  let searchBodies: Array<Record<string, unknown>> = [];
+
+  const outline = (chars: number) => () => ({
+    status: 200,
+    body: {
+      document_id: 103,
+      title: 'Испытания турбодетандера',
+      content_version: 'v1',
+      chapters: [{ index: 0, heading: null, chars, page_from: null, page_to: null }],
+    },
+  });
+
+  beforeEach(() => {
+    searchBodies = [];
+    const search = routes[SEARCH];
+    routes[SEARCH] = (body) => {
+      searchBodies.push(JSON.parse(body));
+      return search(body);
+    };
+    routes[OUTLINE] = outline(60);
+    routes[CONTENT] = () => ({
+      status: 200,
+      body: {
+        document_id: 103,
+        content_version: 'v1',
+        chapter: 0,
+        page_from: null,
+        page_to: null,
+        chars: 60,
+        truncated: false,
+        text: 'п. 5.2. Авансовый отчёт сдаётся в течение 3 рабочих дней.',
+      },
+    });
+  });
+
+  const agentTool = (name: string, dochub?: object) => {
+    const req = makeReq(
+      {},
+      dochub && {
+        enabled: true,
+        baseURL,
+        keyId: 'test',
+        privateKeyPath: keyPath,
+        limits: { wallClockMs: 10000, reduceReserveMs: 1000 },
+        ...dochub,
+      },
+    );
+    const found = createDochubAgentTools({
+      req,
+      agent: { dochub: { collection_id: 7 } },
+      resolveLlm: async () => stubLlm,
+    }).find((candidate) => candidate.name === name);
+    if (!found) {
+      throw new Error(`no ${name}`);
+    }
+    return { tool: found, req };
+  };
+
+  it('returns a short top hit whole, skips closed ones and turns the planner off', async () => {
+    const { tool: search } = agentTool('dochub_agent_search');
+    const result = await search.invoke({ query: 'авансовый отчёт' });
+
+    expect(result).toContain('Найдено документов: 2');
+    expect(result).toContain('Документы №3 короткие и приведены ниже целиком');
+    expect(result).toContain('--- ТЕКСТ ДОКУМЕНТА №3 «Испытания турбодетандера» ---');
+    expect(result).toContain('в течение 3 рабочих дней');
+    expect(result).toContain('[№3, п. 5.2]');
+    expect(requests.some((line) => line.includes('/documents/111/'))).toBe(false);
+    expect(searchBodies[0]).toMatchObject({ query: 'авансовый отчёт', planner: false });
+  });
+
+  it('lets a later read of the inlined document hit the cache', async () => {
+    const { tool: search, req } = agentTool('dochub_agent_search');
+    await search.invoke({ query: 'авансовый отчёт' });
+    const read = createDochubAgentTools({
+      req,
+      agent: { dochub: { collection_id: 7 } },
+      resolveLlm: async () => stubLlm,
+    }).find((candidate) => candidate.name === 'dochub_agent_read')!;
+    await read.invoke({ document: '№3', question: 'Срок авансового отчёта?' });
+
+    expect(requests.filter((line) => line === CONTENT)).toHaveLength(1);
+  });
+
+  it('skips a document the outline shows too long, without fetching its text', async () => {
+    routes[OUTLINE] = outline(10_000_000);
+    const { tool: search } = agentTool('dochub_agent_search');
+    const result = await search.invoke({ query: 'авансовый отчёт' });
+
+    expect(result).toContain('Найдено документов: 2');
+    expect(result).not.toContain('ТЕКСТ ДОКУМЕНТА');
+    expect(requests).toContain(OUTLINE);
+    expect(requests).not.toContain(CONTENT);
+  });
+
+  it('skips a short text cut into many chapters', async () => {
+    routes[OUTLINE] = () => ({
+      status: 200,
+      body: {
+        document_id: 103,
+        title: 'Испытания турбодетандера',
+        content_version: 'v1',
+        chapters: Array.from({ length: 12 }, (_, index) => ({
+          index,
+          heading: null,
+          chars: 10,
+          page_from: null,
+          page_to: null,
+        })),
+      },
+    });
+    const { tool: search } = agentTool('dochub_agent_search');
+    const result = await search.invoke({ query: 'авансовый отчёт' });
+
+    expect(result).not.toContain('ТЕКСТ ДОКУМЕНТА');
+    expect(requests).not.toContain(CONTENT);
+  });
+
+  it('does not return the same text twice in one turn', async () => {
+    const { tool: search, req } = agentTool('dochub_agent_search');
+    await search.invoke({ query: 'авансовый отчёт' });
+    const again = createDochubAgentTools({
+      req,
+      agent: { dochub: { collection_id: 7 } },
+      resolveLlm: async () => stubLlm,
+    }).find((candidate) => candidate.name === 'dochub_agent_search')!;
+    const result = await again.invoke({ query: 'срок авансового отчёта' });
+
+    expect(result).not.toContain('ТЕКСТ ДОКУМЕНТА');
+    expect(result).toContain('Текст документов №3 уже приведён');
+    expect(requests.filter((line) => line === OUTLINE)).toHaveLength(1);
+  });
+
+  it('still returns the hits when the text cannot be fetched', async () => {
+    routes[CONTENT] = () => ({ status: 404, body: { detail: 'document_not_found' } });
+    const { tool: search } = agentTool('dochub_agent_search');
+    const result = await search.invoke({ query: 'авансовый отчёт' });
+
+    expect(result).toContain('Испытания турбодетандера');
+    expect(result).not.toContain('ТЕКСТ ДОКУМЕНТА');
+  });
+
+  it('inlines nothing when turned off', async () => {
+    const { tool: search } = agentTool('dochub_agent_search', {
+      search: { agentInlineDocuments: 0 },
+    });
+    const result = await search.invoke({ query: 'авансовый отчёт' });
+
+    expect(result).not.toContain('ТЕКСТ ДОКУМЕНТА');
+    expect(requests).not.toContain(OUTLINE);
+  });
+
+  it('leaves the general search unchanged: no text, no planner field', async () => {
+    const result = await toolByName(makeReq({}), 'dochub_search').invoke({
+      collection: 'Нефтяное хозяйство 2018',
+      query: 'авансовый отчёт',
+    });
+
+    expect(result).not.toContain('ТЕКСТ ДОКУМЕНТА');
+    expect(requests).not.toContain(OUTLINE);
+    expect(searchBodies[0]).not.toHaveProperty('planner');
+  });
+});

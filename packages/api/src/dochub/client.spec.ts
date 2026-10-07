@@ -87,7 +87,14 @@ const runtime = (overrides: Partial<DochubRuntimeConfig> = {}): DochubRuntimeCon
   requestTimeoutMs: 2000,
   limits,
   agent: { temperature: 0, maxOutputTokens: 900, thinking: false },
-  search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 10 },
+  search: {
+    defaultTopK: 8,
+    maxTopK: 20,
+    slotRetries: 2,
+    slotRetryDelayMs: 10,
+    agentInlineDocuments: 2,
+    agentPlanner: false,
+  },
   ...overrides,
 });
 

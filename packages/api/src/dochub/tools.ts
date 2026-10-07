@@ -5,23 +5,24 @@ import type {
   DochubAgentSettings,
   DochubCollectionSummary,
   DochubDocumentRef,
+  DochubSearchHit,
   DochubSearchResponse,
 } from './types';
 import type { DochubCatalog, DochubCatalogStore, DochubCollectionResolution } from './catalog';
+import type { DochubReadScope, DochubWholeDocument } from './reader';
 import type { DochubDocumentResolution } from './catalog';
 import type { DochubLlm, DochubLlmAgent } from './llm';
 import type { DochubResolvedConfig } from './config';
 import type { DochubExtractDepth } from './extract';
 import type { DochubSurveyDepth } from './survey';
 import type { EndpointDbMethods } from '~/types';
-import type { DochubReadScope } from './reader';
 import type { ServerRequest } from '~/types';
 import type { DochubClient } from './client';
 import type { RunBudget } from './budget';
+import { formatReadResult, readDocument, readWholeDocument, TEXT_CITATION } from './reader';
 import { createDochubCatalog, createDochubCatalogStore } from './catalog';
 import { extractFromDocuments, formatExtractResult } from './extract';
 import { formatSurveyResult, surveyCollection } from './survey';
-import { formatReadResult, readDocument } from './reader';
 import { DochubError, describeForModel } from './errors';
 import { dochubToolkit } from '~/tools/toolkits/dochub';
 import { isDochubConfigured } from './config';
@@ -324,9 +325,106 @@ async function runSearch(
   }
   const settings = context.config.runtime.search;
   const limited = Math.min(topK ?? settings.defaultTopK, settings.maxTopK);
-  const response = await context.client.search(resolved.id, query, limited);
+  const response = await context.client.search(
+    resolved.id,
+    query,
+    limited,
+    pinned ? { planner: settings.agentPlanner } : undefined,
+  );
   context.catalog.registerHits(resolved.id, response.hits);
-  return formatSearch(resolved.name, resolved.id, response, pinned);
+  const found = formatSearch(resolved.name, resolved.id, response, pinned);
+  if (!pinned) {
+    return found;
+  }
+  const inlined = await inlineTopHits(context, response.hits);
+  return inlined.documents.length > 0 || inlined.repeated.length > 0
+    ? `${found}\n\n${formatInlined(inlined)}`
+    : found;
+}
+
+interface InlinedDocument {
+  hit: DochubSearchHit;
+  whole: DochubWholeDocument;
+}
+
+interface InlinedHits {
+  documents: InlinedDocument[];
+  /** Top hits whose text an earlier search of this turn already returned. */
+  repeated: DochubSearchHit[];
+}
+
+/** A shorter outline than this is read for one request per chapter at most. */
+const INLINE_MAX_CHAPTERS = 8;
+
+/**
+ * A DocHub agent answers reference questions, and a regulation is usually
+ * short: the top hits come back whole, so the model answers right away
+ * instead of spending a turn on dochub_agent_read. Their combined size stays
+ * within `directReadTokens`. Never fails the search — on any trouble but an
+ * abort the hits simply come back without text.
+ */
+async function inlineTopHits(
+  context: ToolContext,
+  hits: readonly DochubSearchHit[],
+): Promise<InlinedHits> {
+  const { limits, search } = context.config.runtime;
+  const { inlined: seen } = context.catalog;
+  const candidates = hits.filter((hit) => hit.can_open).slice(0, search.agentInlineDocuments);
+  const inlined: InlinedHits = { documents: [], repeated: [] };
+  let room = limits.directReadTokens;
+  for (const hit of candidates) {
+    if (seen.has(hit.id)) {
+      inlined.repeated.push(hit);
+      continue;
+    }
+    if (room <= 0) {
+      break;
+    }
+    try {
+      const whole = await readWholeDocument({
+        client: context.client,
+        documentId: hit.id,
+        maxTokens: room,
+        maxChapters: Math.min(limits.maxChapters, INLINE_MAX_CHAPTERS),
+        concurrency: limits.chapterConcurrency,
+      });
+      if (whole) {
+        inlined.documents.push({ hit, whole });
+        seen.add(hit.id);
+        room -= whole.tokens;
+      }
+    } catch (error) {
+      if (error instanceof DochubError && error.kind === 'aborted') {
+        throw error;
+      }
+      logger.warn(`[dochub] inlining document ${hit.id} into search failed`, error);
+      break;
+    }
+  }
+  return inlined;
+}
+
+function formatInlined({ documents, repeated }: InlinedHits): string {
+  const repeatNote =
+    repeated.length > 0
+      ? `Текст документов ${repeated.map((hit) => `№${hit.seq}`).join(', ')} уже приведён в результате предыдущего поиска — используй его, не запрашивай снова.`
+      : '';
+  if (documents.length === 0) {
+    return repeatNote;
+  }
+  const numbers = documents.map(({ hit }) => `№${hit.seq}`).join(', ');
+  const blocks = documents.map(({ hit, whole }) => {
+    const truncated = whole.truncated
+      ? '\n⚠ Часть документа длиннее предела одного ответа DocHub и приведена не полностью.'
+      : '';
+    return `--- ТЕКСТ ДОКУМЕНТА №${hit.seq} «${hit.title}» ---
+${TEXT_CITATION[whole.citation](hit.seq)}${truncated}
+
+${whole.text}
+--- КОНЕЦ ДОКУМЕНТА №${hit.seq} ---`;
+  });
+  const lead = `Документы ${numbers} короткие и приведены ниже целиком: отвечай по их тексту сам, dochub_agent_read для них не вызывай. Числа, время, сроки и суммы приводи дословно. Если ответа в этих текстах нет, прочитай другие найденные документы через dochub_agent_read.`;
+  return [lead, repeatNote, blocks.join('\n\n')].filter(Boolean).join('\n\n');
 }
 
 async function runRead(

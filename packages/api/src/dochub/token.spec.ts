@@ -29,7 +29,14 @@ const runtime: DochubRuntimeConfig = {
     directReadTokens: 0,
   },
   agent: { temperature: 0, maxOutputTokens: 900, thinking: false },
-  search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 4000 },
+  search: {
+    defaultTopK: 8,
+    maxTopK: 20,
+    slotRetries: 2,
+    slotRetryDelayMs: 4000,
+    agentInlineDocuments: 2,
+    agentPlanner: false,
+  },
 };
 
 const ldapUser = (overrides: Partial<IUser> = {}): IUser =>

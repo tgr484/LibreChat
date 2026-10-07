@@ -10,10 +10,10 @@ import {
 } from 'librechat-data-provider';
 import type { TAttachment, PartMetadata } from 'librechat-data-provider';
 import { useLocalize, useProgress, useExpandCollapse, useLazyCollapseBody } from '~/hooks';
+import { cn, getToolDisplayLabel, getDochubProgressLabels, logger } from '~/utils';
 import { ToolIcon, getToolIconType, isError } from './ToolOutput';
 import { useMCPIconMap, useMCPServerNames } from '~/hooks/MCP';
 import { resolveToolCallPhase } from '~/utils/toolCallPhase';
-import { cn, getToolDisplayLabel, logger } from '~/utils';
 import { toolPanelSpacingClassName } from './disclosure';
 import { useToolCallIntent } from './Parts/intent';
 import { AttachmentGroup } from './Parts';
@@ -239,6 +239,10 @@ export default function ToolCall({
    *  the `tool_intents` capability); persists as the settled label —
    *  completion is a UI state, not a tense change. */
   const intent = useToolCallIntent(_args);
+  const dochubLabels = useMemo(
+    () => (isMCPToolCall ? undefined : getDochubProgressLabels(function_name, _args, localize)),
+    [function_name, isMCPToolCall, _args, localize],
+  );
 
   const getFinishedText = () => {
     if (phase === 'cancelled') {
@@ -256,6 +260,9 @@ export default function ToolCall({
     }
     if (intent != null) {
       return intent;
+    }
+    if (dochubLabels != null) {
+      return dochubLabels.finished;
     }
     if (isMCPToolCall === true) {
       return localize('com_assistants_completed_function', { 0: displayFunctionName });
@@ -292,6 +299,7 @@ export default function ToolCall({
           onClick={handleToggleInfo}
           inProgressText={
             intent ??
+            dochubLabels?.running ??
             (displayFunctionName
               ? localize('com_assistants_running_var', { 0: displayFunctionName })
               : localize('com_assistants_running_action'))

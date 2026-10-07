@@ -31,6 +31,28 @@ describe('resolveDochubConfig', () => {
     delete process.env.DOCHUB_INTEGRATION_KID;
     delete process.env.DOCHUB_INTEGRATION_PRIVATE_KEY;
     delete process.env.DOCHUB_INTEGRATION_PRIVATE_KEY_PATH;
+    delete process.env.DOCHUB_DIRECT_READ_TOKENS;
+  });
+
+  it('takes directReadTokens from the environment over the yaml', () => {
+    expect(
+      resolveDochubConfig(baseConfig({ limits: { directReadTokens: 8000 } }))?.runtime.limits
+        .directReadTokens,
+    ).toBe(8000);
+
+    process.env.DOCHUB_DIRECT_READ_TOKENS = '24000';
+    expect(resolveDochubConfig(baseConfig())?.runtime.limits.directReadTokens).toBe(24000);
+    /** The loader fills in schema defaults, so the yaml always carries a value. */
+    expect(
+      resolveDochubConfig(baseConfig({ limits: { directReadTokens: 16000, maxChapters: 5 } }))
+        ?.runtime.limits,
+    ).toMatchObject({ directReadTokens: 24000, maxChapters: 5 });
+
+    process.env.DOCHUB_DIRECT_READ_TOKENS = '0';
+    expect(resolveDochubConfig(baseConfig())?.runtime.limits.directReadTokens).toBe(0);
+
+    process.env.DOCHUB_DIRECT_READ_TOKENS = 'много';
+    expect(resolveDochubConfig(baseConfig())?.runtime.limits.directReadTokens).toBe(16000);
   });
 
   it('resolves defaults and keeps the key out of the returned object', () => {

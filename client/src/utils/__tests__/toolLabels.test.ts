@@ -1,5 +1,10 @@
 import { Constants } from 'librechat-data-provider';
-import { parseToolName, getToolDisplayLabel, TOOL_FRIENDLY_NAME_KEYS } from '../toolLabels';
+import {
+  parseToolName,
+  getToolDisplayLabel,
+  TOOL_FRIENDLY_NAME_KEYS,
+  getDochubProgressLabels,
+} from '../toolLabels';
 
 describe('parseToolName', () => {
   it('splits an MCP tool id into server + tool name', () => {
@@ -80,5 +85,60 @@ describe('getToolDisplayLabel', () => {
 
   it('returns the raw name for an unknown native tool', () => {
     expect(getToolDisplayLabel('custom_tool', identityLocalize)).toBe('custom_tool');
+  });
+});
+
+describe('getDochubProgressLabels', () => {
+  const localize = (key: string, values?: Record<string, string>) => `${key}(${values?.[0] ?? ''})`;
+
+  it('quotes the search query from settled args, as a string or an object', () => {
+    expect(
+      getDochubProgressLabels('dochub_agent_search', '{"query":"авансовый отчёт"}', localize),
+    ).toEqual({
+      running: 'com_ui_dochub_searching(авансовый отчёт)',
+      finished: 'com_ui_dochub_search_done(авансовый отчёт)',
+    });
+    expect(getDochubProgressLabels('dochub_search', { query: 'отпуск' }, localize)?.running).toBe(
+      'com_ui_dochub_searching(отпуск)',
+    );
+  });
+
+  it('names the document being read and adds № to a bare number', () => {
+    expect(
+      getDochubProgressLabels('dochub_agent_read', { document: '4', question: 'q' }, localize)
+        ?.running,
+    ).toBe('com_ui_dochub_reading(№4)');
+    expect(
+      getDochubProgressLabels('dochub_read', { document: '№4 «Положение»' }, localize)?.finished,
+    ).toBe('com_ui_dochub_read_done(№4 «Положение»)');
+  });
+
+  it('clips a long query to one line', () => {
+    const label = getDochubProgressLabels('dochub_search', { query: 'а'.repeat(200) }, localize);
+    expect(label?.running.length).toBeLessThan(120);
+    expect(label?.running).toContain('…');
+  });
+
+  it('falls back while args stream and for other tools', () => {
+    expect(getDochubProgressLabels('dochub_search', '{"query":"авансо', localize)).toBeUndefined();
+    expect(getDochubProgressLabels('dochub_search', { query: '  ' }, localize)).toBeUndefined();
+    expect(getDochubProgressLabels('dochub_agent_list', {}, localize)).toBeUndefined();
+    expect(getDochubProgressLabels('web_search', { query: 'x' }, localize)).toBeUndefined();
+  });
+
+  it('gives every DocHub tool a friendly name', () => {
+    for (const name of [
+      'dochub',
+      'dochub_list',
+      'dochub_search',
+      'dochub_read',
+      'dochub_extract',
+      'dochub_survey',
+      'dochub_agent_list',
+      'dochub_agent_search',
+      'dochub_agent_read',
+    ]) {
+      expect(TOOL_FRIENDLY_NAME_KEYS[name]).toBeDefined();
+    }
   });
 });

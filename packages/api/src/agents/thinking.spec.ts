@@ -156,6 +156,45 @@ describe('startThinkingDecision', () => {
     ).toBeUndefined();
   });
 
+  it('turns reasoning off for a DocHub agent without asking the classifier', async () => {
+    const context = runtime('Сравни три положения и оцени риски');
+    const dochubDecision = (appConfigOverride: AppConfig) =>
+      startThinkingDecision({
+        key: {},
+        endpoint: 'RNT',
+        runtime: { ...context, appConfig: appConfigOverride },
+        db,
+        dochubAgent: true,
+      });
+
+    await expect(dochubDecision(appConfig())).resolves.toEqual({
+      enabled: false,
+      source: 'dochub',
+    });
+    /** Forced even where the classifier does not run: Qwen reasons by default. */
+    await expect(dochubDecision({} as AppConfig)).resolves.toEqual({
+      enabled: false,
+      source: 'dochub',
+    });
+    await expect(
+      dochubDecision({
+        ...appConfig(),
+        dochub: { agents: { thinking: true } },
+      } as unknown as AppConfig),
+    ).resolves.toEqual({ enabled: true, source: 'dochub' });
+    expect(received).toHaveLength(0);
+  });
+
+  it('still asks the classifier for another agent of the same turn', async () => {
+    const key = {};
+    const context = runtime('Сравни три архитектуры и оцени риски');
+    await startThinkingDecision({ key, endpoint: 'RNT', runtime: context, db, dochubAgent: true });
+    await expect(decide(context, 'RNT', key)).resolves.toEqual({
+      enabled: true,
+      source: 'classifier',
+    });
+  });
+
   it('asks the classifier model with reasoning off and the proxy headers', async () => {
     await expect(decide(runtime('Сравни три архитектуры и оцени риски'))).resolves.toEqual({
       enabled: true,

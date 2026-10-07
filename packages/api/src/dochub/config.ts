@@ -86,6 +86,29 @@ function resolveKey(config: TDochubConfig): KeyObject | undefined {
   }
 }
 
+/**
+ * `DOCHUB_DIRECT_READ_TOKENS` overrides `limits.directReadTokens`: the yaml
+ * loader fills in schema defaults, so a yaml value cannot be told apart from
+ * an unset one, and the operator tunes this per model window without a yaml edit.
+ */
+function resolveLimits(config: TDochubConfig): DochubRuntimeConfig['limits'] {
+  const limits = config.limits ?? {};
+  const raw = process.env.DOCHUB_DIRECT_READ_TOKENS?.trim();
+  if (!raw) {
+    return dochubLimitsSchema.parse(limits);
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    const message = `[dochub] DOCHUB_DIRECT_READ_TOKENS must be a non-negative integer, got "${raw}" — ignored`;
+    if (!warnedMessages.has(message)) {
+      warnedMessages.add(message);
+      logger.warn(message);
+    }
+    return dochubLimitsSchema.parse(limits);
+  }
+  return dochubLimitsSchema.parse({ ...limits, directReadTokens: value });
+}
+
 function resolveBaseURL(config: TDochubConfig): string | undefined {
   const raw = (config.baseURL ?? process.env.DOCHUB_BASE_URL ?? '').trim();
   if (!raw) {
@@ -147,7 +170,7 @@ export function resolveDochubConfig(
       audience: config.audience ?? process.env.DOCHUB_AUDIENCE ?? 'dochub-integration',
       tokenTtlSeconds: config.tokenTtlSeconds ?? 60,
       requestTimeoutMs: config.requestTimeoutMs ?? 20000,
-      limits: dochubLimitsSchema.parse(config.limits ?? {}),
+      limits: resolveLimits(config),
       agent: dochubAgentSchema.parse(config.agent ?? {}),
       search: dochubSearchSchema.parse(config.search ?? {}),
     },

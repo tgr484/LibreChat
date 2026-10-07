@@ -148,7 +148,14 @@ const survey = (
     llm: env.llm,
     budget,
     limits: budgetLimits,
-    search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 1 },
+    search: {
+      defaultTopK: 8,
+      maxTopK: 20,
+      slotRetries: 2,
+      slotRetryDelayMs: 1,
+      agentInlineDocuments: 2,
+      agentPlanner: false,
+    },
   }).finally(() => budget.dispose());
 };
 
@@ -249,7 +256,14 @@ describe('surveyCollection', () => {
       llm: env.llm,
       budget,
       limits: limits(),
-      search: { defaultTopK: 8, maxTopK: 20, slotRetries: 2, slotRetryDelayMs: 1 },
+      search: {
+        defaultTopK: 8,
+        maxTopK: 20,
+        slotRetries: 2,
+        slotRetryDelayMs: 1,
+        agentInlineDocuments: 2,
+        agentPlanner: false,
+      },
     });
     budget.dispose();
 

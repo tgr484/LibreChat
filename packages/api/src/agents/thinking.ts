@@ -11,7 +11,7 @@ import {
 
 export interface ThinkingDecision {
   enabled: boolean;
-  source: 'classifier' | 'fallback';
+  source: 'classifier' | 'fallback' | 'dochub';
 }
 
 /** Test seam: answers the classifier prompt; the server builds it from the config. */
@@ -129,8 +129,15 @@ export function startThinkingDecision(params: {
   endpoint: string;
   runtime: EndpointRuntimeContext;
   db: EndpointDbMethods;
+  /** A DocHub agent: `dochub.agents.thinking` decides, the classifier is not asked. */
+  dochubAgent?: boolean;
   classify?: ThinkingClassify;
 }): Promise<ThinkingDecision> | undefined {
+  if (params.dochubAgent === true) {
+    const enabled = params.runtime.appConfig?.dochub?.agents?.thinking === true;
+    logger.info(`[thinking] ${enabled ? 'on' : 'off'} for a DocHub agent (dochub.agents.thinking)`);
+    return Promise.resolve({ enabled, source: 'dochub' });
+  }
   const config = params.runtime.appConfig?.thinking;
   if (!config?.enabled || !config.endpoints.includes(params.endpoint)) {
     return undefined;

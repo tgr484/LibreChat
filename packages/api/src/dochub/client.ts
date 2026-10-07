@@ -25,7 +25,13 @@ export interface DochubClient {
     options?: { limit?: number; cursor?: string },
   ): Promise<DochubCollectionPage>;
   getSummary(collectionId: number, documentId: number): Promise<DochubSummaryResponse>;
-  search(collectionId: number, query: string, topK: number): Promise<DochubSearchResponse>;
+  search(
+    collectionId: number,
+    query: string,
+    topK: number,
+    /** `planner` is sent only when set; DocHub decides otherwise. */
+    options?: { planner?: boolean },
+  ): Promise<DochubSearchResponse>;
   getOutline(documentId: number): Promise<DochubOutline>;
   /** The only write: makes a collection public; `dryRun` reports what would change. */
   publishCollection(
@@ -230,12 +236,16 @@ export function createDochubClient(params: DochubClientParams): DochubClient {
         method: 'get',
       }),
 
-    search: (collectionId, query, topK) =>
+    search: (collectionId, query, topK, options) =>
       request<DochubSearchResponse>({
         route: '/collections/{id}/search',
         url: `/collections/${collectionId}/search`,
         method: 'post',
-        data: { query, top_k: topK },
+        data: {
+          query,
+          top_k: topK,
+          ...(options?.planner != null ? { planner: options.planner } : {}),
+        },
         slotAware: true,
       }),
 

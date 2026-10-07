@@ -2437,6 +2437,18 @@ export const dochubSearchSchema = z.object({
   /** DocHub shares its `ask_slot` with its own UI chat, so search can be refused. */
   slotRetries: z.number().int().min(0).max(5).default(2),
   slotRetryDelayMs: z.number().int().positive().default(4000),
+  /**
+   * DocHub agents: how many top hits a search returns as full text, so the
+   * model answers without a separate read. Their combined size is capped by
+   * `limits.directReadTokens`. 0 turns it off.
+   */
+  agentInlineDocuments: z.number().int().min(0).max(4).default(2),
+  /**
+   * DocHub agents: whether DocHub runs its LLM query planner on their
+   * searches. The planner adds two model calls per search, and the agent's
+   * model has already phrased the query.
+   */
+  agentPlanner: z.boolean().default(false),
 });
 
 /**
@@ -2450,6 +2462,12 @@ export const dochubAgentsSchema = z.object({
   model: z.string().optional(),
   /** Word, PowerPoint and Excel generation on new agents by default. */
   office: z.boolean().default(true),
+  /**
+   * Whether the agents' model reasons. Overrides the `thinking` classifier:
+   * reasoning runs on every hop of the tool loop and multiplies the wait for
+   * a reference answer.
+   */
+  thinking: z.boolean().default(false),
 });
 
 export const dochubSchema = z.object({
