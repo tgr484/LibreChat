@@ -36,6 +36,8 @@ export default function Artifacts() {
   const [isVisible, setIsVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  /** Bumped by «Refresh»: a static page has no Sandpack client to reload, so it remounts. */
+  const [refreshCount, setRefreshCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [height, setHeight] = useState(90);
@@ -287,6 +289,7 @@ export default function Artifacts() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
+    setRefreshCount((count) => count + 1);
     const client = previewRef.current?.getClient();
     if (client) {
       client.dispatch({ type: 'refresh' });
@@ -508,6 +511,7 @@ export default function Artifacts() {
                 previewRef={previewRef as React.MutableRefObject<SandpackPreviewRef>}
                 isSharedConvo={isSharedConvo}
                 onMermaidExportReady={handleMermaidExportReady}
+                refreshCount={refreshCount}
               />
             </div>
 

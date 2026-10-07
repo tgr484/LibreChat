@@ -1,15 +1,13 @@
+import { createElement } from 'react';
+import remarkGfm from 'remark-gfm';
+import ReactMarkdown from 'react-markdown';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { highContrastDarkTheme, highContrastLightTheme } from '@librechat/client';
 import type { IThemeRGB } from '@librechat/client';
 
 const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 
-/**
- * Allowlist-based URL validator for markdown artifact rendering.
- * The logic body is duplicated verbatim into the generated static HTML
- * template (`EMBEDDED_IS_SAFE_URL` constant below). Any behavioral change
- * here MUST be applied to both copies. A sync-verification test in
- * `markdown.test.ts` enforces this.
- */
+/** Allowlist-based URL validator for markdown artifact rendering. */
 export const isSafeUrl = (url: string): boolean => {
   const trimmed = url.trim();
   if (!trimmed) {
@@ -172,13 +170,6 @@ const markdownCSS = `
   box-sizing: content-box;
 }
 
-/* Rendered in place of the document when the marked CDN does not load. Its own
-   rule rather than an inline style so a contrast mode can reach it. */
-.markdown-error {
-  color: #e53e3e;
-  padding: 1rem;
-}
-
 /* Dark theme */
 @media (prefers-color-scheme: dark) {
   .markdown-body {
@@ -235,35 +226,50 @@ const markdownCSS = `
 }
 `;
 
-/**
- * Escapes content for safe embedding inside a JS template literal that
- * lives within an HTML `<script>` block. Prevents the content from
- * breaking out of the template literal or prematurely closing the
- * surrounding `<script>` tag (which would allow arbitrary HTML injection).
- */
-function escapeForTemplateLiteral(content: string): string {
-  return content
-    .replace(/\\/g, '\\\\')
-    .replace(/`/g, '\\`')
-    .replace(/\$/g, '\\$')
-    .replace(/<\/script/gi, '<\\/script');
+/** Single line breaks become `<br>`, as chat messages read them (marked's `breaks: true`). */
+type MdastNode = { type: string; value?: string; children?: MdastNode[] };
+
+const SKIP_BREAKS = new Set(['code', 'inlineCode', 'html']);
+
+function softBreaks(node: MdastNode): void {
+  if (!node.children || SKIP_BREAKS.has(node.type)) {
+    return;
+  }
+  node.children = node.children.flatMap((child): MdastNode[] => {
+    if (child.type !== 'text' || !child.value?.includes('\n')) {
+      softBreaks(child);
+      return [child];
+    }
+    return child.value
+      .split('\n')
+      .flatMap((line, index): MdastNode[] =>
+        index === 0
+          ? [{ type: 'text', value: line }]
+          : [{ type: 'break' }, { type: 'text', value: line }],
+      );
+  });
 }
 
-const MARKED_CDN = 'https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js';
-const MARKED_SRI = 'sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+';
+const remarkSoftBreaks = () => softBreaks;
 
 /**
- * Embedded JS copy of `isSafeUrl`. Keep in sync with the exported
- * TypeScript version above — `markdown.test.ts` has a sync-verification
- * test that will break if the two copies diverge.
+ * The document rendered here, not in the preview: the page then needs no script
+ * and no CDN, so it shows on a closed network too. Raw HTML is dropped and
+ * unsafe link and image targets are blanked, as the chat itself renders them.
  */
-export const EMBEDDED_IS_SAFE_URL = `const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
-const isSafeUrl = (url) => {
-  const trimmed = url.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith('/') || trimmed.startsWith('#') || trimmed.startsWith('.')) return true;
-  try { return SAFE_PROTOCOLS.has(new URL(trimmed).protocol); } catch(e) { return false; }
-};`;
+function renderMarkdown(content: string): string {
+  return renderToStaticMarkup(
+    createElement(
+      ReactMarkdown,
+      {
+        remarkPlugins: [remarkGfm, remarkSoftBreaks],
+        skipHtml: true,
+        urlTransform: (url: string) => (isSafeUrl(url) ? url : ''),
+      },
+      content,
+    ),
+  );
+}
 
 /**
  * The stylesheet above is a fixed GitHub palette selected by the iframe's own
@@ -290,9 +296,6 @@ function contrastMarkdownCSS(isDarkMode: boolean): string {
   const link = hex('rgb-link', isDarkMode ? '#8cc8ff' : '#0000cc');
   const border = hex('rgb-border-medium', ink);
   const codeFill = hex('rgb-surface-secondary', canvas);
-  /** The renderer-failure notice is the one message this document paints itself,
-   *  and it has to survive a CDN outage inside a contrast mode. */
-  const destructive = hex('rgb-text-destructive', isDarkMode ? '#ff8f8f' : '#a10000');
 
   return `
 .markdown-body { color: ${ink}; background-color: ${canvas}; }
@@ -307,13 +310,11 @@ body { background-color: ${canvas}; }
 .markdown-body pre { border: 1px solid ${border}; }
 ::-webkit-scrollbar-thumb { background-color: ${ink}; }
 * { scrollbar-color: ${ink} ${canvas}; }
-.markdown-error { color: ${destructive}; }
 `;
 }
 
 function generateMarkdownHtml(content: string, contrastCSS = ''): string {
   const normalizedContent = content.replace(/^( {2})(-|\d+\.)/gm, '    $2');
-  const escapedContent = escapeForTemplateLiteral(normalizedContent);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -324,32 +325,7 @@ function generateMarkdownHtml(content: string, contrastCSS = ''): string {
 <style>${markdownCSS}${contrastCSS}</style>
 </head>
 <body>
-<div class="markdown-body" id="content" style="padding:2rem;margin:1rem;min-height:100vh"></div>
-<script src="${MARKED_CDN}" integrity="${MARKED_SRI}" crossorigin="anonymous"></script>
-<script>
-if (typeof marked === 'undefined') {
-  document.getElementById('content').innerHTML =
-    '<p class="markdown-error">Markdown renderer failed to load. Check network connectivity.</p>';
-} else {
-${EMBEDDED_IS_SAFE_URL}
-marked.use({
-  gfm: true,
-  breaks: true,
-  renderer: {
-    html() { return ''; },
-    link(token) {
-      if (!isSafeUrl(token.href || '')) return '';
-      return false; // fall through to marked's default link renderer
-    },
-    image(token) {
-      if (!isSafeUrl(token.href || '')) return '';
-      return false; // fall through to marked's default image renderer
-    }
-  }
-});
-document.getElementById('content').innerHTML = marked.parse(\`${escapedContent}\`);
-}
-</script>
+<div class="markdown-body" id="content" style="padding:2rem;margin:1rem;min-height:100vh">${renderMarkdown(normalizedContent)}</div>
 </body>
 </html>`;
 }

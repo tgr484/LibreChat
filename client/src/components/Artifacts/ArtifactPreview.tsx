@@ -42,6 +42,7 @@ export const ArtifactPreview = memo(function ({
   previewRef,
   currentCode,
   startupConfig,
+  refreshCount = 0,
 }: {
   files: ArtifactFiles;
   fileKey: string;
@@ -50,6 +51,8 @@ export const ArtifactPreview = memo(function ({
   previewRef: MutableRefObject<SandpackPreviewRef>;
   currentCode?: string;
   startupConfig?: SandpackStartupConfig;
+  /** A new value remounts the static page, which has no Sandpack client to reload. */
+  refreshCount?: number;
 }) {
   const artifactFiles = useMemo(() => {
     if (Object.keys(files).length === 0) {
@@ -76,7 +79,9 @@ export const ArtifactPreview = memo(function ({
 
   if (template === 'static' && !startupConfig?.staticBundlerURL) {
     const pages = artifactFiles as Record<string, PreviewFile>;
-    return <StaticPreview html={fileCode(pages['index.html'] ?? pages[fileKey])} />;
+    return (
+      <StaticPreview key={refreshCount} html={fileCode(pages['index.html'] ?? pages[fileKey])} />
+    );
   }
 
   return (

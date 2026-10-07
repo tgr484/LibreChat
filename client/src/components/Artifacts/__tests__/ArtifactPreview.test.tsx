@@ -58,6 +58,24 @@ describe('ArtifactPreview', () => {
     expect(screen.getByTestId('static-artifact-preview')).toHaveAttribute('srcdoc', page);
   });
 
+  test('reloads the static page when asked to refresh', () => {
+    const { rerender } = renderPreview();
+    const before = screen.getByTestId('static-artifact-preview');
+
+    rerender(
+      <ArtifactPreview
+        files={{ 'index.html': page }}
+        fileKey="index.html"
+        template="static"
+        sharedProps={{}}
+        previewRef={previewRef}
+        startupConfig={{}}
+        refreshCount={1}
+      />,
+    );
+    expect(screen.getByTestId('static-artifact-preview')).not.toBe(before);
+  });
+
   test('keeps Sandpack when a self-hosted static bundler is configured', () => {
     renderPreview({ startupConfig: { staticBundlerURL: 'https://bundler.local' } });
     expect(screen.getByTestId('sandpack')).toBeInTheDocument();

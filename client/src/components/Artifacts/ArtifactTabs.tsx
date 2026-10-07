@@ -17,6 +17,8 @@ interface ArtifactTabsProps {
   previewRef: React.MutableRefObject<SandpackPreviewRef>;
   isSharedConvo?: boolean;
   onMermaidExportReady?: (data: ProcessedMermaidSvg | null) => void;
+  /** Changes when the user asks to reload the preview. */
+  refreshCount?: number;
 }
 
 function LoadingArtifactTabs() {
