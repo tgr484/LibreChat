@@ -36,6 +36,7 @@ import {
   PendingToolApprovalButton,
   PendingToolApprovalPanel,
 } from '~/components/Chat/approval/Review';
+import ModelSelector from '~/components/Chat/Menus/Endpoints/ModelSelector';
 import PendingManualSkillsChips from './PendingManualSkillsChips';
 import usePastedTextEdit from '~/hooks/Files/usePastedTextEdit';
 import useAskAnswerMode from '~/hooks/Input/useAskAnswerMode';
@@ -45,6 +46,7 @@ import PastedTextDialog from './Files/PastedTextDialog';
 import DuringRunSendButton from './DuringRunSendButton';
 import ProjectLandingChip from '../ProjectLandingChip';
 import { useGetStartupConfig } from '~/data-provider';
+import NewChat from '~/components/Chat/Menus/NewChat';
 import { mainTextareaId, BadgeItem } from '~/common';
 import PendingSteerChips from './PendingSteerChips';
 import PendingQuoteChips from './PendingQuoteChips';
@@ -809,6 +811,12 @@ const ChatForm = memo(function ChatForm({
                   <PendingToolApprovalButton conversationId={conversationId} />
                 )}
                 <div className="mx-auto flex" />
+                {index === 0 && conversationId !== Constants.NEW_CONVO && (
+                  <NewChat placement="composer" />
+                )}
+                {index === 0 && (
+                  <ModelSelector startupConfig={startupConfig} placement="composer" />
+                )}
                 <TokenUsage index={index} conversation={conversation} isSubmitting={isSubmitting} />
                 {SpeechToText && audioRecorderEnabled && (
                   <AudioRecorder

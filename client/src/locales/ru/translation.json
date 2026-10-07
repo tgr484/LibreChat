@@ -493,7 +493,6 @@
   "com_nav_archive_name": "Имя",
   "com_nav_archived_chats": "Архивированные чаты",
   "com_nav_at_command": "@-команда",
-  "com_nav_at_command_description": "Переключение команды \"@\" для выбора эндпоинтов, моделей, пресетов и др.",
   "com_nav_audio_play_error": "Ошибка воспроизведения аудио: {{0}}",
   "com_nav_audio_process_error": "Ошибка обработки аудио: {{0}}",
   "com_nav_auto_expand_tools": "Автоматически разворачивать детали инструментов",

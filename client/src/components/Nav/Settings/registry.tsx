@@ -274,17 +274,6 @@ export const registry: SettingEntry[] = [
   },
   // Chat · Commands
   {
-    id: 'atCommand',
-    tab: CHAT,
-    section: 'commands',
-    labelKey: 'com_nav_at_command_description',
-    Component: toggleControl({
-      stateAtom: store.atCommand,
-      localizationKey: 'com_nav_at_command_description',
-      switchId: 'atCommand',
-    }),
-  },
-  {
     id: 'plusCommand',
     tab: CHAT,
     section: 'commands',

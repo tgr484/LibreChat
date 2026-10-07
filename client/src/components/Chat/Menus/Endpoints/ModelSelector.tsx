@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { TooltipAnchor } from '@librechat/client';
 import { getConfigDefaults } from 'librechat-data-provider';
+import { TooltipAnchor, composerControlClasses } from '@librechat/client';
 import type { ModelSelectorProps } from '~/common';
 import {
   renderModelSpecs,
@@ -15,10 +15,18 @@ import { getSelectedIcon, getDisplayValue } from './utils';
 import { CustomMenu as Menu } from './CustomMenu';
 import DialogManager from './DialogManager';
 import { useLocalize } from '~/hooks';
+import { cn } from '~/utils';
 
 const defaultInterface = getConfigDefaults().interface;
 
-function ModelSelectorContent() {
+/**
+ * `composer`: the selector sits in the message box's control row, styled like its
+ * other controls, and opens upward; `header` keeps the upstream look.
+ */
+type ModelSelectorPlacement = 'header' | 'composer';
+
+function ModelSelectorContent({ placement }: { placement: ModelSelectorPlacement }) {
+  const inComposer = placement === 'composer';
   const localize = useLocalize();
   const modelSelectorHint = useShortcutHint('openModelSelector', localize('com_ui_select_model'));
   const modelSelectorAriaKey = useShortcutAriaKey('openModelSelector');
@@ -73,7 +81,11 @@ function ModelSelectorContent() {
         <button
           data-testid="model-selector-button"
           aria-keyshortcuts={modelSelectorAriaKey}
-          className="my-1 flex h-9 max-w-full items-center gap-2 rounded-xl border border-border-light bg-presentation px-3 py-2 text-sm text-text-primary hover:bg-surface-active-alt"
+          className={
+            inComposer
+              ? cn(composerControlClasses(), 'max-w-full px-2.5 md:px-theme-normal')
+              : 'my-1 flex h-9 max-w-full items-center gap-2 rounded-xl border border-border-light bg-presentation px-3 py-2 text-sm text-text-primary hover:bg-surface-active-alt'
+          }
           aria-label={localize('com_ui_select_model')}
         >
           {selectedIcon && React.isValidElement(selectedIcon) && (
@@ -88,8 +100,14 @@ function ModelSelectorContent() {
   );
 
   return (
-    <div className="relative flex min-w-0 max-w-[60vw] flex-col items-center gap-2 sm:max-w-xs">
+    <div
+      className={cn(
+        'relative flex min-w-0 flex-col items-center gap-2',
+        inComposer ? 'max-w-[40vw] sm:max-w-[14rem]' : 'max-w-[60vw] sm:max-w-xs',
+      )}
+    >
       <Menu
+        placement={inComposer ? 'top-start' : undefined}
         values={selectedValues}
         onValuesChange={(values: Record<string, any>) => {
           setSelectedValues({
@@ -129,7 +147,10 @@ function ModelSelectorContent() {
   );
 }
 
-export default function ModelSelector({ startupConfig }: ModelSelectorProps) {
+export default function ModelSelector({
+  startupConfig,
+  placement = 'header',
+}: ModelSelectorProps & { placement?: ModelSelectorPlacement }) {
   const interfaceConfig = startupConfig?.interface ?? defaultInterface;
   const modelSpecs = startupConfig?.modelSpecs?.list ?? [];
 
@@ -141,7 +162,7 @@ export default function ModelSelector({ startupConfig }: ModelSelectorProps) {
   return (
     <ModelSelectorChatProvider>
       <ModelSelectorProvider startupConfig={startupConfig}>
-        <ModelSelectorContent />
+        <ModelSelectorContent placement={placement} />
       </ModelSelectorProvider>
     </ModelSelectorChatProvider>
   );

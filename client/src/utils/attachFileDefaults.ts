@@ -149,6 +149,31 @@ export const getDefaultToolResource = ({
   return undefined;
 };
 
+/**
+ * The destination for a dropped or pasted file without asking, or `null` when the user
+ * should choose among several. With the upload-type choice turned off
+ * (`interface.fileAttachOptions: false`) the paperclip's smart default decides instead.
+ */
+export const pickUploadOption = ({
+  options,
+  askForOption,
+  ...context
+}: ProviderUploadContext & {
+  files: FileLike[];
+  contextEnabled: boolean;
+  options: (EToolResources | undefined)[];
+  askForOption: boolean;
+}): { option: EToolResources | undefined } | null => {
+  if (options.length === 1) {
+    return { option: options[0] };
+  }
+  if (askForOption) {
+    return null;
+  }
+  const preferred = getDefaultToolResource(context);
+  return { option: options.includes(preferred) ? preferred : options[0] };
+};
+
 /** OS file-picker `accept` filter for an explicit (escape-hatch) upload-type choice. */
 export const getAcceptForFileType = (fileType?: AttachFileUploadType): string => {
   switch (fileType) {

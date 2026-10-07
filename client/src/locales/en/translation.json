@@ -509,7 +509,6 @@
   "com_nav_archive_name": "Name",
   "com_nav_archived_chats": "Archived chats",
   "com_nav_at_command": "@-Command",
-  "com_nav_at_command_description": "Toggle command \"@\" for switching endpoints, models, presets, etc.",
   "com_nav_audio_play_error": "Error playing audio: {{0}}",
   "com_nav_audio_process_error": "Error processing audio: {{0}}",
   "com_nav_auto_expand_tools": "Auto-expand tool details",

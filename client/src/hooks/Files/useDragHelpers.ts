@@ -29,19 +29,21 @@ export default function useDragHelpers() {
     [conversation?.endpoint],
   );
 
-  const { getOptions } = useUploadOptions();
+  const { getOptions, pickOption } = useUploadOptions();
   const routeFiles = useFileUploadRouter();
   const { openModal } = useUploadModalContext();
 
   /** Use refs to avoid re-creating the drop handler */
   const conversationRef = useRef(conversation);
   const getOptionsRef = useRef(getOptions);
+  const pickOptionRef = useRef(pickOption);
   const routeFilesRef = useRef(routeFiles);
   const openModalRef = useRef(openModal);
   const isAssistantsRef = useRef(isAssistants);
 
   conversationRef.current = conversation;
   getOptionsRef.current = getOptions;
+  pickOptionRef.current = pickOption;
   routeFilesRef.current = routeFiles;
   openModalRef.current = openModal;
   isAssistantsRef.current = isAssistants;
@@ -84,8 +86,9 @@ export default function useDragHelpers() {
         showToast({ message: localize('com_error_files_unsupported'), status: 'error' });
         return;
       }
-      if (options.length === 1) {
-        routeFilesRef.current(item.files, options[0]);
+      const picked = pickOptionRef.current(item.files, options);
+      if (picked) {
+        routeFilesRef.current(item.files, picked.option);
         return;
       }
       openModalRef.current(item.files);

@@ -9,9 +9,10 @@ import {
 } from 'librechat-data-provider';
 import type { EToolResources } from 'librechat-data-provider';
 import useAgentToolPermissions from '~/hooks/Agents/useAgentToolPermissions';
+import { useGetFileConfig, useGetStartupConfig } from '~/data-provider';
 import useAgentCapabilities from '~/hooks/Agents/useAgentCapabilities';
 import useGetAgentsConfig from '~/hooks/Agents/useGetAgentsConfig';
-import { useGetFileConfig } from '~/data-provider';
+import { pickUploadOption } from '~/utils/attachFileDefaults';
 import { ephemeralAgentByConvoId } from '~/store';
 import { getViableUploadOptions } from '~/utils';
 import { useDragDropContext } from '~/Providers';
@@ -83,8 +84,28 @@ export default function useUploadOptions() {
     ],
   );
 
+  const { data: startupConfig } = useGetStartupConfig();
+  const askForOption = startupConfig?.interface?.fileAttachOptions !== false;
+
+  /** The destination to use without asking, or `null` when the user should choose. */
+  const pickOption = useCallback(
+    (files: File[], options: (EToolResources | undefined)[]) =>
+      pickUploadOption({
+        files,
+        options,
+        askForOption,
+        endpoint,
+        endpointType,
+        provider,
+        useResponsesApi,
+        contextEnabled: capabilities.contextEnabled,
+      }),
+    [askForOption, endpoint, endpointType, provider, useResponsesApi, capabilities.contextEnabled],
+  );
+
   return {
     getOptions,
+    pickOption,
     uploadsDisabled,
     isConfigPending,
     contextEnabled: capabilities.contextEnabled,
