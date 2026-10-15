@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
-import useArtifactProps from '../useArtifactProps';
-import { TOOL_ARTIFACT_TYPES, wrapAsFencedCodeBlock } from '~/utils/artifacts';
 import type { Artifact } from '~/common';
+import { TOOL_ARTIFACT_TYPES, wrapAsFencedCodeBlock } from '~/utils/artifacts';
+import useArtifactProps from '../useArtifactProps';
 
 describe('useArtifactProps', () => {
   const createArtifact = (partial: Partial<Artifact>): Artifact => ({
@@ -56,7 +56,7 @@ describe('useArtifactProps', () => {
       const { result } = renderHook(() => useArtifactProps({ artifact }));
 
       expect(result.current.files['index.html']).toContain('<!DOCTYPE html>');
-      expect(result.current.files['index.html']).toContain('marked.parse');
+      expect(result.current.files['index.html']).toContain('<h1>Test</h1>');
     });
 
     it('should include all required markdown files', () => {
@@ -82,8 +82,8 @@ describe('useArtifactProps', () => {
       expect(result.current.files['content.md']).toContain('`const x = 1;`');
       expect(result.current.files['content.md']).toContain('C:\\Users');
 
-      expect(result.current.files['index.html']).toContain('\\`');
-      expect(result.current.files['index.html']).toContain('\\\\');
+      expect(result.current.files['index.html']).toContain('<code>const x = 1;</code>');
+      expect(result.current.files['index.html']).toContain('C:\\Users');
     });
 
     it('should handle empty markdown content', () => {
@@ -273,7 +273,7 @@ describe('useArtifactProps', () => {
       const { result } = renderHook(() => useArtifactProps({ artifact }));
       const html = result.current.files['index.html'] as string;
       expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('marked.parse');
+      expect(html).toContain('<code class="language-javascript">');
     });
 
     /* Codex review P3: when `fileToArtifact` resolved a language via

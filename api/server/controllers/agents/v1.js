@@ -74,6 +74,7 @@ const { resizeAvatar } = require('~/server/services/Files/images/avatar');
 const { getFileStrategy } = require('~/server/utils/getFileStrategy');
 const { filterFile } = require('~/server/services/Files/process');
 const { getCachedTools } = require('~/server/services/Config');
+const { getModelsConfig } = require('~/server/controllers/ModelController');
 const {
   createMCPPermissionContext,
   resolveConfigServers,
@@ -753,6 +754,10 @@ const pruneToolResourceFileIdsForAgent = async ({
  * @param {ServerResponse} res - The response object.
  * @returns {Promise<Agent>} 201 - success response - application/json
  */
+/** The models an endpoint offers, for checking a DocHub agent's model choice. */
+const listEndpointModels = (req) => async (endpoint) =>
+  (await getModelsConfig(req))?.[endpoint] ?? [];
+
 const createAgentHandler = async (req, res) => {
   try {
     /**
@@ -764,6 +769,7 @@ const createAgentHandler = async (req, res) => {
     const dochubPrepared = await prepareDochubAgent({
       req,
       data: agentCreateSchema.parse(req.body),
+      listModels: listEndpointModels(req),
     });
     if (!dochubPrepared.ok) {
       return res
@@ -1072,6 +1078,7 @@ const updateAgentHandler = async (req, res) => {
       req,
       data: agentUpdateSchema.parse(req.body),
       loadExisting: async () => (await db.getAgent({ id }, { dochub: 1 }))?.dochub,
+      listModels: listEndpointModels(req),
     });
     if (!dochubPrepared.ok) {
       return res

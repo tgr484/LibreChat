@@ -9,6 +9,7 @@ import {
   buildClassifierPrompt,
   parseClassifierAnswer,
   startThinkingDecision,
+  resolveThinkingEndpoints,
 } from './thinking';
 import { getProviderConfig } from '~/endpoints/config/providers';
 
@@ -156,6 +157,96 @@ describe('startThinkingDecision', () => {
     ).toBeUndefined();
   });
 
+  it('turns reasoning off for a DocHub agent without asking the classifier', async () => {
+    const context = runtime('Сравни три положения и оцени риски');
+    const dochubDecision = (appConfigOverride: AppConfig) =>
+      startThinkingDecision({
+        key: {},
+        endpoint: 'RNT',
+        runtime: { ...context, appConfig: appConfigOverride },
+        db,
+        dochubAgent: true,
+      });
+
+    await expect(dochubDecision(appConfig())).resolves.toEqual({
+      enabled: false,
+      source: 'dochub',
+    });
+    /** Forced even where the classifier does not run: Qwen reasons by default. */
+    await expect(dochubDecision({} as AppConfig)).resolves.toEqual({
+      enabled: false,
+      source: 'dochub',
+    });
+    await expect(
+      dochubDecision({
+        ...appConfig(),
+        dochub: { agents: { thinking: true } },
+      } as unknown as AppConfig),
+    ).resolves.toEqual({ enabled: true, source: 'dochub' });
+    expect(received).toHaveLength(0);
+  });
+
+  it('still asks the classifier for another agent of the same turn', async () => {
+    const key = {};
+    const context = runtime('Сравни три архитектуры и оцени риски');
+    await startThinkingDecision({ key, endpoint: 'RNT', runtime: context, db, dochubAgent: true });
+    await expect(decide(context, 'RNT', key)).resolves.toEqual({
+      enabled: true,
+      source: 'classifier',
+    });
+  });
+
+  it("follows the user's choice without asking the classifier", async () => {
+    const withChoice = (thinkingChoice: unknown): EndpointRuntimeContext => {
+      const context = runtime('Сравни три архитектуры и оцени риски');
+      return {
+        ...context,
+        requestBody: {
+          ...context.requestBody,
+          ephemeralAgent: { thinking: thinkingChoice as 'on' },
+        },
+      };
+    };
+
+    await expect(decide(withChoice('on'))).resolves.toEqual({ enabled: true, source: 'user' });
+    reply = 'complex';
+    await expect(decide(withChoice('off'))).resolves.toEqual({ enabled: false, source: 'user' });
+    expect(received).toHaveLength(0);
+
+    /** Anything else is «auto»: the classifier decides. */
+    await expect(decide(withChoice('maybe'))).resolves.toEqual({
+      enabled: true,
+      source: 'classifier',
+    });
+    expect(received).toHaveLength(1);
+  });
+
+  it("ignores the user's choice where the classifier does not run", () => {
+    const context = runtime('вопрос');
+    expect(
+      decide(
+        { ...context, requestBody: { ...context.requestBody, ephemeralAgent: { thinking: 'on' } } },
+        'openAI',
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps a DocHub agent's setting over the user's choice", async () => {
+    const context = runtime('вопрос');
+    await expect(
+      startThinkingDecision({
+        key: {},
+        endpoint: 'RNT',
+        runtime: {
+          ...context,
+          requestBody: { ...context.requestBody, ephemeralAgent: { thinking: 'on' } },
+        },
+        db,
+        dochubAgent: true,
+      }),
+    ).resolves.toEqual({ enabled: false, source: 'dochub' });
+  });
+
   it('asks the classifier model with reasoning off and the proxy headers', async () => {
     await expect(decide(runtime('Сравни три архитектуры и оцени риски'))).resolves.toEqual({
       enabled: true,
@@ -261,5 +352,13 @@ describe('applyThinkingDecision', () => {
     expect(applyThinkingDecision(llmConfig, decision, { overrideProvider: 'openAI' })).toBe(
       llmConfig,
     );
+  });
+});
+
+describe('resolveThinkingEndpoints', () => {
+  it('lists the controlled endpoints only while the classifier is on', () => {
+    expect(resolveThinkingEndpoints(appConfig())).toEqual(['RNT']);
+    expect(resolveThinkingEndpoints(appConfig(thinking({ enabled: false })))).toBeUndefined();
+    expect(resolveThinkingEndpoints({} as AppConfig)).toBeUndefined();
   });
 });

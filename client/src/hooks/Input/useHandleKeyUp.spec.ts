@@ -158,13 +158,18 @@ describe('useHandleKeyUp', () => {
       expect(setShowPromptsPopover).toHaveBeenCalledWith(true);
     });
 
-    it('triggers @ mention for "@" at position 1', () => {
-      const ref = makeTextAreaRef('@', 1);
-      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
+    it('never opens the @ mention picker: model and agent choice lives in the selector', () => {
+      for (const [text, key] of [
+        ['@', '@'],
+        ['@bo', 'o'],
+      ] as const) {
+        const ref = makeTextAreaRef(text, text.length);
+        const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
 
-      act(() => handleKeyUp(makeKeyEvent('@')));
+        act(() => handleKeyUp(makeKeyEvent(key)));
 
-      expect(setShowMentionPopover).toHaveBeenCalledWith(true);
+        expect(setShowMentionPopover).not.toHaveBeenCalled();
+      }
     });
 
     it('triggers + command for "+" at position 1', () => {
@@ -203,15 +208,6 @@ describe('useHandleKeyUp', () => {
       act(() => handleKeyUp(makeKeyEvent('c')));
 
       expect(setShowPromptsPopover).toHaveBeenCalledWith(true);
-    });
-
-    it('triggers @ mention for "@bo" (fast typed)', () => {
-      const ref = makeTextAreaRef('@bo', 3);
-      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
-
-      act(() => handleKeyUp(makeKeyEvent('o')));
-
-      expect(setShowMentionPopover).toHaveBeenCalledWith(true);
     });
 
     it('triggers for text up to MAX_COMMAND_TRIGGER_LENGTH (5 chars)', () => {
@@ -383,16 +379,6 @@ describe('useHandleKeyUp', () => {
       expect(setShowPromptsPopover).not.toHaveBeenCalled();
     });
 
-    it('does NOT trigger @ mention when atCommand toggle is disabled', () => {
-      mockCommandToggles.at = false;
-      const ref = makeTextAreaRef('@', 1);
-      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
-
-      act(() => handleKeyUp(makeKeyEvent('@')));
-
-      expect(setShowMentionPopover).not.toHaveBeenCalled();
-    });
-
     it('does NOT trigger + command when plusCommand toggle is disabled', () => {
       mockCommandToggles.plus = false;
       const ref = makeTextAreaRef('+', 1);
@@ -433,17 +419,6 @@ describe('useHandleKeyUp', () => {
       act(() => handleKeyUp(makeKeyEvent('+')));
 
       expect(setShowPlusPopover).not.toHaveBeenCalled();
-    });
-
-    it('triggers @ mention regardless of other permissions', () => {
-      mockHasPromptsAccess.current = false;
-      mockHasMultiConvoAccess.current = false;
-      const ref = makeTextAreaRef('@', 1);
-      const { handleKeyUp, setShowMentionPopover } = renderUseHandleKeyUp(ref);
-
-      act(() => handleKeyUp(makeKeyEvent('@')));
-
-      expect(setShowMentionPopover).toHaveBeenCalledWith(true);
     });
 
     it('does NOT trigger $ skill command without SKILLS access', () => {

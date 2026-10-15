@@ -6,6 +6,7 @@ import {
   applicationMimeTypes,
 } from 'librechat-data-provider';
 import {
+  pickUploadOption,
   getDefaultToolResource,
   isFileValidForProvider,
   getAcceptFromSupportedMimeTypes,
@@ -100,7 +101,10 @@ describe('getDefaultToolResource', () => {
   });
 
   it('requires every file in the batch to be natively valid to pick native', () => {
-    const files = [makeFile('photo.png', 'image/png'), makeFile('doc.docx', 'application/vnd.ms-word')];
+    const files = [
+      makeFile('photo.png', 'image/png'),
+      makeFile('doc.docx', 'application/vnd.ms-word'),
+    ];
     const result = getDefaultToolResource({
       files,
       provider: EModelEndpoint.openAI,
@@ -175,5 +179,51 @@ describe('getAcceptFromSupportedMimeTypes', () => {
     expect(accept).toContain('image/png');
     expect(accept).toContain('application/pdf');
     expect(accept).not.toContain('video/mp4');
+  });
+});
+
+describe('pickUploadOption', () => {
+  const pdf = { name: 'policy.pdf', type: 'application/pdf' };
+  const base = {
+    files: [pdf],
+    endpoint: 'RNT',
+    endpointType: EModelEndpoint.custom,
+    contextEnabled: true,
+  };
+
+  it('takes the only viable destination without asking', () => {
+    expect(
+      pickUploadOption({ ...base, options: [EToolResources.file_search], askForOption: true }),
+    ).toEqual({ option: EToolResources.file_search });
+  });
+
+  it('asks when several fit and the choice is enabled', () => {
+    expect(
+      pickUploadOption({
+        ...base,
+        options: [EToolResources.file_search, EToolResources.context],
+        askForOption: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("takes the paperclip's default when the choice is turned off", () => {
+    expect(
+      pickUploadOption({
+        ...base,
+        options: [EToolResources.file_search, EToolResources.context],
+        askForOption: false,
+      }),
+    ).toEqual({ option: EToolResources.context });
+  });
+
+  it('falls back to the first viable destination when the default does not fit', () => {
+    expect(
+      pickUploadOption({
+        ...base,
+        options: [EToolResources.file_search, EToolResources.execute_code],
+        askForOption: false,
+      }),
+    ).toEqual({ option: EToolResources.file_search });
   });
 });

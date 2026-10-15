@@ -101,10 +101,10 @@ describe('loadEphemeralAgent → resolveSender parity', () => {
   });
 });
 
-describe('loadEphemeralAgent office tools', () => {
+describe('loadEphemeralAgent office tools and artifacts', () => {
   const load = async (
-    ephemeralAgent: Record<string, boolean>,
-    specFlags: Record<string, boolean> = {},
+    ephemeralAgent: Record<string, boolean | string>,
+    specFlags: Record<string, boolean | string> = {},
   ) => {
     const req = {
       user: { id: 'user-1' },
@@ -121,24 +121,30 @@ describe('loadEphemeralAgent office tools', () => {
       deps,
     );
   };
+  const OFFICE = ['create_document', 'create_presentation', 'create_spreadsheet'];
 
-  test('equips them from the chat toggle', async () => {
-    const agent = await load({ office: true });
-    expect(agent?.tools).toEqual(
-      expect.arrayContaining(['create_document', 'create_presentation']),
-    );
-  });
-
-  test('equips them from a model spec', async () => {
-    const agent = await load({}, { office: true });
-    expect(agent?.tools).toEqual(
-      expect.arrayContaining(['create_document', 'create_presentation']),
-    );
-  });
-
-  test('adds nothing by default', async () => {
+  test('equips Office tools in every plain chat', async () => {
     const agent = await load({});
-    expect(agent?.tools ?? []).not.toContain('create_document');
-    expect(agent?.tools ?? []).not.toContain('create_presentation');
+    expect(agent?.tools).toEqual(expect.arrayContaining(OFFICE));
+  });
+
+  test('ignores a stale chat switch either way', async () => {
+    expect((await load({ office: false }))?.tools).toEqual(expect.arrayContaining(OFFICE));
+    expect((await load({ office: true }, { office: false }))?.tools ?? []).not.toContain(
+      'create_document',
+    );
+  });
+
+  test('lets a model spec turn Office tools off', async () => {
+    const agent = await load({}, { office: false });
+    for (const name of OFFICE) {
+      expect(agent?.tools ?? []).not.toContain(name);
+    }
+  });
+
+  test('takes artifacts from the model spec, never from the client', async () => {
+    expect((await load({ artifacts: 'default' }))?.artifacts).toBeUndefined();
+    expect((await load({}, { artifacts: true }))?.artifacts).toBe('default');
+    expect((await load({ artifacts: '' }, { artifacts: 'shadcnui' }))?.artifacts).toBe('shadcnui');
   });
 });

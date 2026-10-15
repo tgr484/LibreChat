@@ -4,6 +4,7 @@ import type {
   DochubCitation,
   DochubChapterFinding,
   DochubDocumentRef,
+  DochubContent,
   DochubLimits,
   DochubOutline,
   DochubReadResult,
@@ -273,12 +274,112 @@ function documentText(texts: readonly string[], citation: DochubCitation): strin
         .trim();
 }
 
+/**
+ * The text itself when the chat model may take it whole (`direct`) and it
+ * fits `directReadTokens`; null otherwise, so the caller condenses it.
+ */
+async function directText(params: ReadContext, raw: string): Promise<string | null> {
+  if (params.direct !== true || params.limits.directReadTokens <= 0) {
+    return null;
+  }
+  const text = documentText([raw], params.citation);
+  return (await countTokens(text)) <= params.limits.directReadTokens ? text : null;
+}
+
 /** A summary keeps the gist, not the figures: its silence proves nothing about the document. */
 const SUMMARY_ONLY_NOTE =
   '⚠ Это ответ по выжимке, а не по полному тексту: числа, время, сроки и конкретные требования в выжимке могут отсутствовать. Если ответа здесь нет или он неполный, повтори вызов со scope=full и не делай вывод, что в документе этого нет.';
 
 const TRUNCATED_NOTE =
   '⚠ Часть документа длиннее предела одного ответа DocHub и прочитана не полностью.';
+
+/**
+ * Every chapter of the outline's version, in order. Versioned reads fill the
+ * content cache, so a later read of the same document costs no request.
+ * Returns null on any failure but an abort, which ends the whole call.
+ */
+async function fetchAllChapters(
+  client: DochubClient,
+  documentId: number,
+  outline: DochubOutline,
+  concurrency: number,
+): Promise<DochubContent[] | null> {
+  const settled = await mapWithConcurrency(outline.chapters, concurrency, (chapter) =>
+    client.getContent(documentId, { chapter: chapter.index }, outline.content_version),
+  );
+  const contents: DochubContent[] = [];
+  for (const result of settled) {
+    if (result.status === 'rejected') {
+      if (isKind(result.reason, 'aborted')) {
+        throw result.reason;
+      }
+      return null;
+    }
+    contents.push(result.value);
+  }
+  return contents;
+}
+
+/**
+ * The outline's sizes rule a document out before any content request. Four
+ * characters per token is generous for Russian, so only a document that
+ * cannot fit is skipped; the exact count comes after the fetch.
+ */
+const MAX_CHARS_PER_TOKEN = 4;
+
+export interface DochubWholeDocument {
+  citation: DochubCitation;
+  text: string;
+  tokens: number;
+  truncated: boolean;
+}
+
+/**
+ * A document's whole text for the chat model, with no model call: `null` when
+ * it has no recognized text, does not fit `maxTokens` or could not be fetched.
+ */
+export async function readWholeDocument(params: {
+  client: DochubClient;
+  documentId: number;
+  maxTokens: number;
+  /** One request per chapter: a short text cut into many parts is not worth it. */
+  maxChapters: number;
+  concurrency: number;
+}): Promise<DochubWholeDocument | null> {
+  const { client, documentId, maxTokens } = params;
+  if (maxTokens <= 0) {
+    return null;
+  }
+  const outline = await client.getOutline(documentId);
+  const { chapters } = outline;
+  const chars = chapters.reduce((sum, chapter) => sum + chapter.chars, 0);
+  if (
+    chapters.length === 0 ||
+    chapters.length > params.maxChapters ||
+    chars > maxTokens * MAX_CHARS_PER_TOKEN
+  ) {
+    return null;
+  }
+  const contents = await fetchAllChapters(client, documentId, outline, params.concurrency);
+  if (contents == null) {
+    return null;
+  }
+  const citation = citationStyle(outline.chapters);
+  const text = documentText(
+    contents.map((content) => content.text),
+    citation,
+  );
+  const tokens = await countTokens(text);
+  if (tokens > maxTokens) {
+    return null;
+  }
+  return {
+    citation,
+    text,
+    tokens,
+    truncated: contents.some((content) => content.truncated),
+  };
+}
 
 /**
  * A small document fits one model call whole: fetch every chapter, and if the
@@ -303,34 +404,31 @@ async function tryFastRead(
     return null;
   }
 
-  const settled = await mapWithConcurrency(
-    outline.chapters,
+  const contents = await fetchAllChapters(
+    params.client,
+    params.ref.id,
+    outline,
     params.limits.chapterConcurrency,
-    (chapter) =>
-      params.client.getContent(params.ref.id, { chapter: chapter.index }, outline.content_version),
   );
+  if (contents == null) {
+    return null;
+  }
 
   const parts: string[] = [];
   const texts: string[] = [];
   const findings: DochubChapterFinding[] = [];
-  for (const [index, result] of settled.entries()) {
-    if (result.status === 'rejected') {
-      if (isKind(result.reason, 'aborted')) {
-        throw result.reason;
-      }
-      return null;
-    }
+  for (const [index, content] of contents.entries()) {
     const chapter = outline.chapters[index];
     const heading = chapter.heading ? ` «${chapter.heading}»` : '';
-    parts.push(`### Часть ${chapter.index}${heading}\n${result.value.text}`);
-    texts.push(result.value.text);
+    parts.push(`### Часть ${chapter.index}${heading}\n${content.text}`);
+    texts.push(content.text);
     findings.push({
       chapterIndex: chapter.index,
       heading: chapter.heading,
-      pageFrom: result.value.page_from ?? chapter.page_from,
-      pageTo: result.value.page_to ?? chapter.page_to,
+      pageFrom: content.page_from ?? chapter.page_from,
+      pageTo: content.page_to ?? chapter.page_to,
       text: '',
-      truncated: result.value.truncated,
+      truncated: content.truncated,
     });
   }
 
@@ -516,6 +614,24 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
         pageFrom: params.pages.from,
         pageTo: params.pages.to,
       });
+      if (content.truncated) {
+        notes.push('⚠ Диапазон страниц слишком велик и прочитан не полностью — сузь его.');
+      }
+      const whole = await directText(paged, content.text);
+      if (whole != null) {
+        return {
+          ref,
+          source: 'content',
+          citation: paged.citation,
+          findings: [],
+          text: whole,
+          pageRange: `${content.page_from ?? params.pages.from}–${content.page_to ?? params.pages.to ?? params.pages.from}`,
+          synthesis: '',
+          chaptersTotal: 1,
+          chaptersRead: 1,
+          notes: [...notes, ...budget.notes()],
+        };
+      }
       const chapter: DochubChapter = {
         index: 0,
         heading: null,
@@ -534,9 +650,6 @@ export async function readDocument(params: ReadDocumentParams): Promise<DochubRe
           truncated: content.truncated,
         },
       ];
-      if (content.truncated) {
-        notes.push('⚠ Диапазон страниц слишком велик и прочитан не полностью — сузь его.');
-      }
       return {
         ref,
         source: 'content',
@@ -630,7 +743,7 @@ function pageSpan(findings: readonly DochubChapterFinding[]): string {
   return `, с. ${Math.min(...from)}–${Math.max(...to)}`;
 }
 
-const TEXT_CITATION: Record<DochubCitation, (seq: number) => string> = {
+export const TEXT_CITATION: Record<DochubCitation, (seq: number) => string> = {
   page: (seq) =>
     `Маркеры <!-- page: N --> — номера страниц оригинала: ссылайся как [№${seq}, с. N].`,
   section: (seq) =>
@@ -645,7 +758,7 @@ function formatDocumentText(result: DochubReadResult, question: string): string 
   const { ref } = result;
   const notes = result.notes.length > 0 ? `\n${result.notes.join('\n')}` : '';
   return `№${ref.seq} «${ref.title}» (коллекция «${ref.collectionName}»)
-Документ короткий и приведён целиком. Ответь на вопрос «${question}» сам, строго по этому тексту; числа, время, сроки и суммы приводи дословно. ${TEXT_CITATION[result.citation](ref.seq)}${notes}
+${result.pageRange != null ? `Приведены страницы ${result.pageRange} документа.` : 'Документ короткий и приведён целиком.'} Ответь на вопрос «${question}» сам, строго по этому тексту; числа, время, сроки и суммы приводи дословно. ${TEXT_CITATION[result.citation](ref.seq)}${notes}
 
 --- ТЕКСТ ДОКУМЕНТА ---
 ${result.text}

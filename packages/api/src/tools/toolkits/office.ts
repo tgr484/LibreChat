@@ -277,3 +277,11 @@ export const OFFICE_TOOL_NAMES: readonly string[] = [
   officeToolkit.create_presentation.name,
   officeToolkit.create_spreadsheet.name,
 ];
+
+/**
+ * System-prompt note next to the Office tools: the chat has no switch for
+ * them, so the model decides when a file helps and asks before making one.
+ */
+export function buildOfficeToolContext(): string {
+  return `Ты можешь создавать файлы Word (create_document), PowerPoint (create_presentation) и Excel (create_spreadsheet). Если ответ по своей сути — документ (письмо, служебная записка, заявление, отчёт, сравнительная таблица, план выступления), в конце ответа одной фразой предложи оформить его файлом нужного формата. Создавай файл, только когда пользователь попросил об этом или согласился на предложение. На короткие фактические вопросы и в обычной беседе файл не предлагай.`;
+}

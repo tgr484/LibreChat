@@ -201,6 +201,8 @@ export interface DochubReadResult {
   findings: DochubChapterFinding[];
   /** The whole text of a short document, handed to the chat model unread. */
   text?: string;
+  /** Set when `text` is a page range, not the whole document: «12–30». */
+  pageRange?: string;
   synthesis: string;
   chaptersTotal: number;
   chaptersRead: number;

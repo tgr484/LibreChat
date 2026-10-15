@@ -256,10 +256,38 @@ describe('prepareDochubAgent', () => {
       data: {
         tools: ['dochub_agent_list', 'dochub_agent_search', 'dochub_agent_read'],
         provider: 'RNT',
-        model: 'qwen',
       },
     });
     expect(requests).toEqual([]);
+  });
+
+  it("takes the author's model when the endpoint offers it", async () => {
+    const listModels = jest.fn(async () => ['qwen', 'qwen-big']);
+    const created = await prepareDochubAgent({
+      req: makeReq(),
+      data: { model: 'qwen-big', dochub: { collection_id: 7 } },
+      listModels,
+    });
+    expect(created).toMatchObject({ ok: true, data: { provider: 'RNT', model: 'qwen-big' } });
+    expect(listModels).toHaveBeenCalledWith('RNT');
+
+    const updated = await prepareDochubAgent({
+      req: makeReq(),
+      data: { model: 'qwen-big' },
+      loadExisting: async () => ({ collection_id: 7, collection_name: 'Кадровые вопросы' }),
+      listModels,
+    });
+    expect(updated).toMatchObject({ ok: true, data: { model: 'qwen-big' } });
+  });
+
+  it('refuses a model the endpoint does not offer', async () => {
+    const result = await prepareDochubAgent({
+      req: makeReq(),
+      data: { model: 'gpt-4o' },
+      loadExisting: async () => ({ collection_id: 7, collection_name: 'Кадровые вопросы' }),
+      listModels: async () => ['qwen', 'qwen-big'],
+    });
+    expect(result).toMatchObject({ ok: false, status: 400, code: 'dochub_model_unavailable' });
   });
 
   it('keeps the stored collection on an update without asking DocHub', async () => {

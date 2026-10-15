@@ -18,7 +18,6 @@ interface BadgeRowContextType {
   agentsConfig?: TAgentsEndpoint | null;
   skills: ReturnType<typeof useToolToggle>;
   memory: ReturnType<typeof useToolToggle>;
-  office: ReturnType<typeof useToolToggle>;
   webSearch: ReturnType<typeof useToolToggle>;
   artifacts: ReturnType<typeof useToolToggle>;
   fileSearch: ReturnType<typeof useToolToggle>;
@@ -103,7 +102,6 @@ export default function BadgeRowProvider({
       const artifactsToggleKey = `${LocalStorageKeys.LAST_ARTIFACTS_TOGGLE_}${storageSuffix}`;
       const skillsToggleKey = `${LocalStorageKeys.LAST_SKILLS_TOGGLE_}${storageSuffix}`;
       const memoryToggleKey = `${LocalStorageKeys.LAST_MEMORY_TOGGLE_}${storageSuffix}`;
-      const officeToggleKey = `${LocalStorageKeys.LAST_OFFICE_TOGGLE_}${storageSuffix}`;
 
       const codeToggleValue = getTimestampedValue(codeToggleKey);
       const webSearchToggleValue = getTimestampedValue(webSearchToggleKey);
@@ -111,7 +109,6 @@ export default function BadgeRowProvider({
       const artifactsToggleValue = getTimestampedValue(artifactsToggleKey);
       const skillsToggleValue = getTimestampedValue(skillsToggleKey);
       const memoryToggleValue = getTimestampedValue(memoryToggleKey);
-      const officeToggleValue = getTimestampedValue(officeToggleKey);
 
       const initialValues: Record<string, boolean | string> = {};
 
@@ -160,14 +157,6 @@ export default function BadgeRowProvider({
           initialValues[Tools.memory] = JSON.parse(memoryToggleValue);
         } catch (e) {
           console.error('Failed to parse memory toggle value:', e);
-        }
-      }
-
-      if (officeToggleValue !== null) {
-        try {
-          initialValues.office = JSON.parse(officeToggleValue);
-        } catch (e) {
-          console.error('Failed to parse office toggle value:', e);
         }
       }
 
@@ -281,15 +270,6 @@ export default function BadgeRowProvider({
     isAuthenticated: true,
   });
 
-  /** Office documents hook - one toggle equips Word and PowerPoint generation */
-  const office = useToolToggle({
-    conversationId,
-    storageContextKey,
-    toolKey: 'office',
-    localStorageKey: LocalStorageKeys.LAST_OFFICE_TOGGLE_,
-    isAuthenticated: true,
-  });
-
   const mcpServerManager = useMCPServerManager({
     conversationId,
     storageContextKey,
@@ -300,7 +280,6 @@ export default function BadgeRowProvider({
   const value: BadgeRowContextType = {
     skills,
     memory,
-    office,
     webSearch,
     artifacts,
     fileSearch,

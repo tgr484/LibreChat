@@ -73,6 +73,7 @@ export default function useTextarea({
   const { showToast } = useToastContext();
   const {
     getOptions: getUploadOptions,
+    pickOption: pickUploadOption,
     uploadsDisabled,
     isConfigPending: isUploadConfigPending,
   } = useUploadOptions();
@@ -349,14 +350,17 @@ export default function useTextarea({
           return false;
         }
 
-        const usePreferred = preferred != null && options.includes(preferred);
-        if (!usePreferred && options.length > 1) {
+        if (preferred != null && options.includes(preferred)) {
+          return await upload(preferred);
+        }
+        const picked = pickUploadOption(clipboardFiles, options);
+        if (!picked) {
           setFilesLoading(false);
           openModal(clipboardFiles);
           return false;
         }
 
-        return await upload(usePreferred ? preferred : options[0]);
+        return await upload(picked.option);
       } catch (error) {
         console.error('clipboard file routing error', error);
         setFilesLoading(false);
@@ -371,6 +375,7 @@ export default function useTextarea({
       conversation,
       setFilesLoading,
       getUploadOptions,
+      pickUploadOption,
       isUploadConfigPending,
     ],
   );

@@ -24,6 +24,8 @@ export interface DochubCatalog {
   registerHits(collectionId: number, hits: readonly DochubSearchHit[]): void;
   /** True when this document id came from this collection's listing or search. */
   isInCollection(collectionId: number, documentId: number): boolean;
+  /** Documents whose whole text a search already handed to the model this turn. */
+  inlined: Set<number>;
 }
 
 /** Shared between the tool calls of one chat turn so a listing is fetched once. */
@@ -31,10 +33,11 @@ export interface DochubCatalogStore {
   collections?: DochubCollectionsResponse;
   documents: Map<number, Map<number, DochubDocumentRef>>;
   indexed: Set<number>;
+  inlined: Set<number>;
 }
 
 export function createDochubCatalogStore(): DochubCatalogStore {
-  return { documents: new Map(), indexed: new Set() };
+  return { documents: new Map(), indexed: new Set(), inlined: new Set() };
 }
 
 /** Page size and page count are bounded: a huge collection must not eat the budget. */
@@ -216,5 +219,7 @@ export function createDochubCatalog(params: {
      */
     isInCollection: (collectionId, documentId) =>
       store.documents.get(collectionId)?.has(documentId) === true,
+
+    inlined: store.inlined,
   };
 }

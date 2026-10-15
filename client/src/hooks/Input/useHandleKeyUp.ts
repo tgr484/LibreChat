@@ -74,12 +74,10 @@ const useHandleKeyUp = ({
   const { skillsEnabled } = useAgentCapabilities(agentsConfig?.capabilities);
   const getLatestMessage = useGetLatestMessage(index);
   const endpoint = useRecoilValue(store.effectiveEndpointByIndex(index));
-  const setShowMentionPopover = useSetRecoilState(store.showMentionPopoverFamily(index));
   const setShowPlusPopover = useSetRecoilState(store.showPlusPopoverFamily(index));
   const setShowPromptsPopover = useSetRecoilState(store.showPromptsPopoverFamily(index));
   const setShowSkillsPopover = useSetAtom(showSkillsPopoverFamily(index));
 
-  const atCommandEnabled = useRecoilValue(store.atCommand);
   const plusCommandEnabled = useRecoilValue(store.plusCommand);
   const slashCommandEnabled = useRecoilValue(store.slashCommand);
   const dollarCommandEnabled = useRecoilValue(store.dollarCommand);
@@ -90,12 +88,6 @@ const useHandleKeyUp = ({
       setShowSkillsPopover(false);
     }
   }, [endpoint, setShowPlusPopover, setShowSkillsPopover]);
-
-  const handleAtCommand = useCallback(() => {
-    if (atCommandEnabled && shouldTriggerCommand(textAreaRef, '@')) {
-      setShowMentionPopover(true);
-    }
-  }, [textAreaRef, setShowMentionPopover, atCommandEnabled]);
 
   const handlePlusCommand = useCallback(() => {
     if (!hasMultiConvoAccess || !plusCommandEnabled || isAssistantsEndpoint(endpoint)) {
@@ -138,12 +130,11 @@ const useHandleKeyUp = ({
 
   const commandHandlers = useMemo(
     () => ({
-      '@': handleAtCommand,
       '+': handlePlusCommand,
       '/': handlePromptsCommand,
       $: handleSkillsCommand,
     }),
-    [handleAtCommand, handlePlusCommand, handlePromptsCommand, handleSkillsCommand],
+    [handlePlusCommand, handlePromptsCommand, handleSkillsCommand],
   );
 
   const handleUpArrow = useCallback(

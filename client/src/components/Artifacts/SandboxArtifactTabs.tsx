@@ -14,10 +14,12 @@ export default function SandboxArtifactTabs({
   artifact,
   previewRef,
   isSharedConvo,
+  refreshCount,
 }: {
   artifact: Artifact;
   previewRef: React.MutableRefObject<SandpackPreviewRef>;
   isSharedConvo?: boolean;
+  refreshCount?: number;
 }) {
   const { currentCode, setCurrentCode } = useCodeState();
   const { shareId } = useShareContext();
@@ -72,6 +74,7 @@ export default function SandboxArtifactTabs({
           sharedProps={sharedProps}
           currentCode={hasCurrentArtifactCode ? currentCode : undefined}
           startupConfig={resolvedStartupConfig}
+          refreshCount={refreshCount}
         />
       </Tabs.Content>
     </div>

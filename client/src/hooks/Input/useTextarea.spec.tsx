@@ -100,6 +100,8 @@ jest.mock('~/hooks/Files/useUploadOptions', () => ({
   __esModule: true,
   default: jest.fn(() => ({
     getOptions: mockGetUploadOptions,
+    pickOption: (_files: File[], options: unknown[]) =>
+      options.length === 1 ? { option: options[0] } : null,
     uploadsDisabled: false,
     isConfigPending: mockIsUploadConfigPending,
   })),

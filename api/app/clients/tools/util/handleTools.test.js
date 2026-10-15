@@ -989,6 +989,17 @@ describe('Tool Handlers', () => {
       expect(loadedTools.map((tool) => tool.name)).toEqual(['create_presentation']);
       expect(loadedTools[0].responseFormat).toBe('content_and_artifact');
     });
+
+    it('tells the model to offer a file and make it only on request', async () => {
+      const { toolContextMap } = await loadTools({
+        user: fakeUser._id.toString(),
+        tools: ['create_presentation'],
+        options: { req: { user: { id: fakeUser._id.toString() }, config: {} } },
+      });
+
+      expect(toolContextMap.office).toContain('предложи оформить');
+      expect(toolContextMap.office).toContain('только когда пользователь попросил');
+    });
   });
 
   describe('create_document', () => {

@@ -28,6 +28,15 @@ export const TOOL_FRIENDLY_NAME_KEYS: Record<string, TranslationKeys> = {
   delete_memory: 'com_ui_tool_name_delete_memory',
   skill: 'com_ui_skill',
   read_file: 'com_ui_tool_name_read_file',
+  dochub: 'com_ui_tool_name_dochub',
+  dochub_list: 'com_ui_tool_name_dochub_list',
+  dochub_search: 'com_ui_tool_name_dochub_search',
+  dochub_read: 'com_ui_tool_name_dochub_read',
+  dochub_extract: 'com_ui_tool_name_dochub_extract',
+  dochub_survey: 'com_ui_tool_name_dochub_survey',
+  dochub_agent_list: 'com_ui_tool_name_dochub_list',
+  dochub_agent_search: 'com_ui_tool_name_dochub_search',
+  dochub_agent_read: 'com_ui_tool_name_dochub_read',
 };
 
 export interface ParsedToolName {
@@ -87,4 +96,86 @@ export function getToolDisplayLabel(
   if (parsed.mcpServer) return parsed.mcpServer;
   if (parsed.friendlyKey) return localize(parsed.friendlyKey);
   return parsed.toolName;
+}
+
+export interface ToolProgressLabels {
+  running: string;
+  finished: string;
+}
+
+/** Labels quoted from the call's own args stay one short line. */
+const ARG_LABEL_MAX_CHARS = 80;
+
+const DOCHUB_ARG_LABELS: Record<
+  string,
+  { arg: string; running: TranslationKeys; finished: TranslationKeys; seq?: boolean }
+> = {
+  dochub_search: {
+    arg: 'query',
+    running: 'com_ui_dochub_searching',
+    finished: 'com_ui_dochub_search_done',
+  },
+  dochub_agent_search: {
+    arg: 'query',
+    running: 'com_ui_dochub_searching',
+    finished: 'com_ui_dochub_search_done',
+  },
+  dochub_read: {
+    arg: 'document',
+    running: 'com_ui_dochub_reading',
+    finished: 'com_ui_dochub_read_done',
+    seq: true,
+  },
+  dochub_agent_read: {
+    arg: 'document',
+    running: 'com_ui_dochub_reading',
+    finished: 'com_ui_dochub_read_done',
+    seq: true,
+  },
+};
+
+function readArg(args: string | Record<string, unknown> | undefined, key: string): string {
+  if (args == null) {
+    return '';
+  }
+  let parsed: unknown = args;
+  if (typeof args === 'string') {
+    try {
+      parsed = JSON.parse(args);
+    } catch {
+      return '';
+    }
+  }
+  if (parsed == null || typeof parsed !== 'object') {
+    return '';
+  }
+  const value = (parsed as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * What a DocHub search or read is doing, quoted from its args: «Ищу в
+ * коллекции: «отпуск»», «Читаю документ №4». Undefined for other tools and
+ * while the args are still streaming, so the generic label shows instead.
+ */
+export function getDochubProgressLabels(
+  toolName: string,
+  args: string | Record<string, unknown> | undefined,
+  localize: (key: TranslationKeys, values?: Record<string, string>) => string,
+): ToolProgressLabels | undefined {
+  const spec = DOCHUB_ARG_LABELS[toolName];
+  if (!spec) {
+    return undefined;
+  }
+  const raw = readArg(args, spec.arg);
+  if (!raw) {
+    return undefined;
+  }
+  const clipped =
+    raw.length > ARG_LABEL_MAX_CHARS ? `${raw.slice(0, ARG_LABEL_MAX_CHARS - 1)}…` : raw;
+  const value = spec.seq === true && /^\d+$/.test(clipped) ? `№${clipped}` : clipped;
+  return {
+    running: localize(spec.running, { 0: value }),
+    finished: localize(spec.finished, { 0: value }),
+  };
 }

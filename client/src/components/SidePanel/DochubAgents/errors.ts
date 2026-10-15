@@ -8,6 +8,7 @@ const ERROR_KEYS: Record<TDochubErrorCode, TranslationKeys> = {
   dochub_collection_unavailable: 'com_ui_dochub_error_collection_unavailable',
   dochub_collection_private: 'com_ui_dochub_error_collection_private',
   dochub_collection_locked: 'com_ui_dochub_error_collection_locked',
+  dochub_model_unavailable: 'com_ui_dochub_error_model_unavailable',
   dochub_not_manager: 'com_ui_dochub_error_not_manager',
   dochub_publish_unsupported: 'com_ui_dochub_error_publish_unsupported',
   dochub_unavailable: 'com_ui_dochub_error_unavailable',

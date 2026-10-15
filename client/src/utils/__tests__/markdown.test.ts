@@ -1,4 +1,4 @@
-import { isSafeUrl, getMarkdownFiles, EMBEDDED_IS_SAFE_URL } from '../markdown';
+import { isSafeUrl, getMarkdownFiles } from '../markdown';
 
 describe('isSafeUrl', () => {
   it('allows https URLs', () => {
@@ -68,37 +68,6 @@ describe('isSafeUrl', () => {
   });
 });
 
-describe('isSafeUrl sync verification', () => {
-  const embeddedFn = new Function('url', EMBEDDED_IS_SAFE_URL + '\nreturn isSafeUrl(url);') as (
-    url: string,
-  ) => boolean;
-
-  const cases: [string, boolean][] = [
-    ['https://example.com', true],
-    ['http://example.com', true],
-    ['mailto:a@b.com', true],
-    ['tel:+1234567890', true],
-    ['/relative', true],
-    ['./relative', true],
-    ['../up', true],
-    ['#anchor', true],
-    ['javascript:alert(1)', false],
-    ['  javascript:void(0)', false],
-    ['data:text/html,<b>x</b>', false],
-    ['blob:http://x.com/uuid', false],
-    ['vbscript:run', false],
-    ['file:///etc/passwd', false],
-    ['custom:payload', false],
-    ['', false],
-    ['   ', false],
-  ];
-
-  it.each(cases)('embedded copy matches exported isSafeUrl for %j → %s', (url, expected) => {
-    expect(embeddedFn(url)).toBe(expected);
-    expect(isSafeUrl(url)).toBe(expected);
-  });
-});
-
 describe('markdown artifacts', () => {
   describe('getMarkdownFiles', () => {
     it('should return content.md with the original markdown content', () => {
@@ -119,9 +88,10 @@ describe('markdown artifacts', () => {
       const files = getMarkdownFiles(markdown);
 
       expect(files['index.html']).toContain('<!DOCTYPE html>');
-      expect(files['index.html']).toContain('marked.min.js');
-      expect(files['index.html']).toContain('marked.parse');
-      expect(files['index.html']).toContain('# Test');
+      expect(files['index.html']).toContain('<h1>Test</h1>');
+      /** Rendered ahead of time: the page loads nothing, so it works offline. */
+      expect(files['index.html']).not.toContain('<script');
+      expect(files['index.html']).not.toContain('cdn.');
     });
 
     it('should only produce content.md and index.html', () => {
@@ -190,57 +160,40 @@ describe('markdown artifacts', () => {
       expect(unanswered).toEqual([]);
     });
 
-    /** A CDN outage inside a contrast mode is exactly when the message matters,
-     *  and an inline style would be the one colour the override cannot reach. */
-    it('themes the renderer failure message', () => {
-      const standard = getMarkdownFiles('# Test')['index.html'];
-      expect(standard).toContain('class="markdown-error"');
-      expect(standard).not.toMatch(/style="color:/);
-      expect(standard).toContain('color: #e53e3e');
-
-      expect(getMarkdownFiles('# Test', true, true)['index.html']).toContain(
-        '.markdown-error { color: #ff8f8f; }',
-      );
-      expect(getMarkdownFiles('# Test', false, true)['index.html']).toContain(
-        '.markdown-error { color: #a10000; }',
-      );
-    });
-
-    describe('content escaping', () => {
-      it('should escape backticks in markdown content', () => {
-        const markdown = 'Here is some `inline code`';
-        const files = getMarkdownFiles(markdown);
-
-        expect(files['index.html']).toContain('\\`');
+    describe('rendering', () => {
+      it('keeps backticks, backslashes and dollar signs as text', () => {
+        const html = getMarkdownFiles('Price: $100, path C:\\Users, `x`')['index.html'];
+        expect(html).toContain('Price: $100, path C:\\Users, <code>x</code>');
       });
 
-      it('should escape backslashes in markdown content', () => {
-        const markdown = 'Path: C:\\Users\\Test';
-        const files = getMarkdownFiles(markdown);
-
-        expect(files['index.html']).toContain('\\\\');
+      it('renders fenced code with its language class', () => {
+        const html = getMarkdownFiles('```js\nconsole.log("test");\n```')['index.html'];
+        expect(html).toContain('<code class="language-js">console.log(&quot;test&quot;);');
       });
 
-      it('should escape dollar signs in markdown content', () => {
-        const markdown = 'Price: $100';
-        const files = getMarkdownFiles(markdown);
-
-        expect(files['index.html']).toContain('\\$');
+      it('drops raw HTML, so content cannot inject a script', () => {
+        const html = getMarkdownFiles('Some content with </script><script>alert(1)</script>')[
+          'index.html'
+        ];
+        expect(html).not.toContain('<script');
+        expect(html).toContain('Some content with');
       });
 
-      it('should handle code blocks with backticks', () => {
-        const markdown = '```js\nconsole.log("test");\n```';
-        const files = getMarkdownFiles(markdown);
-
-        expect(files['index.html']).toContain('\\`\\`\\`');
+      it('blanks unsafe link targets and keeps safe ones', () => {
+        const html = getMarkdownFiles('[bad](javascript:alert(1)) [good](https://example.com)')[
+          'index.html'
+        ];
+        expect(html).not.toContain('javascript:');
+        expect(html).toContain('href="https://example.com"');
       });
 
-      it('should prevent </script> in content from breaking out of the script block', () => {
-        const markdown = 'Some content with </script><script>alert(1)</script>';
-        const files = getMarkdownFiles(markdown);
-
-        expect(files['index.html']).not.toContain('</script><script>alert(1)');
-        expect(files['index.html']).toContain('<\\/script');
+      it('renders GFM tables and turns single line breaks into <br>', () => {
+        const html = getMarkdownFiles('| a | b |\n|---|---|\n| 1 | 2 |\n\nfirst\nsecond')[
+          'index.html'
+        ];
+        expect(html).toContain('<table>');
+        expect(html).toContain('<td>1</td>');
+        expect(html).toMatch(/first<br\s*\/?>\s*second/);
       });
     });
 
@@ -250,8 +203,7 @@ describe('markdown artifacts', () => {
         const files = getMarkdownFiles(markdown);
 
         expect(files['content.md']).toBe(markdown);
-        expect(files['index.html']).toContain('- Item 1');
-        expect(files['index.html']).toContain('Subitem 1');
+        expect(files['index.html']).toMatch(/<li>Item 1\s*<ul>\s*<li>Subitem 1<\/li>/);
       });
 
       it('should handle numbered lists with 2-space indents', () => {
@@ -259,8 +211,8 @@ describe('markdown artifacts', () => {
         const files = getMarkdownFiles(markdown);
 
         expect(files['content.md']).toBe(markdown);
-        expect(files['index.html']).toContain('1. First');
-        expect(files['index.html']).toContain('2. Second nested');
+        expect(files['index.html']).toContain('First');
+        expect(files['index.html']).toContain('Second nested');
       });
 
       it('should not affect already 4-space indented lists', () => {
@@ -268,8 +220,7 @@ describe('markdown artifacts', () => {
         const files = getMarkdownFiles(markdown);
 
         expect(files['content.md']).toBe(markdown);
-        expect(files['index.html']).toContain('- Item 1');
-        expect(files['index.html']).toContain('Subitem 1');
+        expect(files['index.html']).toMatch(/<li>Item 1\s*<ul>\s*<li>Subitem 1<\/li>/);
       });
     });
 
@@ -309,82 +260,6 @@ describe('markdown artifacts', () => {
 
         expect(files['content.md']).toBe(markdown);
       });
-    });
-  });
-
-  describe('static HTML structure', () => {
-    it('should generate a complete HTML document with marked.js', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('<html lang="en">');
-      expect(html).toContain('<title>Markdown Preview</title>');
-      expect(html).toContain('marked.min.js');
-      expect(html).toContain('marked.use(');
-      expect(html).toContain('marked.parse(');
-    });
-
-    it('should pin the CDN script to an exact version with SRI', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toMatch(/marked@\d+\.\d+\.\d+/);
-      expect(html).toContain('integrity="sha384-');
-      expect(html).toContain('crossorigin="anonymous"');
-    });
-
-    it('should show an error message when marked fails to load', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toContain("typeof marked === 'undefined'");
-      expect(html).toContain('failed to load');
-      expect(html).toContain('class="markdown-error"');
-    });
-
-    it('should strip raw HTML blocks via renderer override', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toContain("html() { return ''; }");
-    });
-
-    it('should embed isSafeUrl logic in the HTML for link sanitization', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toContain("new Set(['http:', 'https:', 'mailto:', 'tel:'])");
-      expect(html).toContain('isSafeUrl');
-      expect(html).toContain("trimmed.startsWith('/')");
-      expect(html).toContain("trimmed.startsWith('#')");
-      expect(html).toContain("trimmed.startsWith('.')");
-    });
-
-    it('should configure marked with GFM and line-break support', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toContain('gfm: true');
-      expect(html).toContain('breaks: true');
-    });
-
-    it('should configure a custom renderer for link/image sanitization', () => {
-      const files = getMarkdownFiles('# Test');
-      const html = files['index.html'];
-
-      expect(html).toContain('renderer:');
-      expect(html).toContain('link(token)');
-      expect(html).toContain('image(token)');
-    });
-
-    it('should embed the markdown content in the HTML', () => {
-      const testContent = '# Heading\n- List item';
-      const files = getMarkdownFiles(testContent);
-      const html = files['index.html'];
-
-      expect(html).toContain('# Heading');
-      expect(html).toContain('- List item');
     });
   });
 });

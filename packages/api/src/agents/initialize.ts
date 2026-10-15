@@ -850,6 +850,7 @@ export async function initializeAgent(
     endpoint: agent.provider,
     runtime,
     db,
+    dochubAgent: agent.dochub?.collection_id != null,
   });
 
   /**

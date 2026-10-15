@@ -1275,16 +1275,19 @@ endpoints:
 #     documentConcurrency: 3
 #     extractionCharLimit: 1200
 #     resultCharLimit: 32000    # size of a tool answer in the chat context
-#     directReadTokens: 16000   # a shorter document goes to the chat model whole, not summarized; 0 = off
+#     directReadTokens: 16000   # a shorter document goes to the chat model whole, not summarized; 0 = off; env DOCHUB_DIRECT_READ_TOKENS overrides it
 #   search:
 #     defaultTopK: 8
 #     slotRetries: 2            # DocHub's AI slot is shared with its own UI chat
 #     slotRetryDelayMs: 4000
+#     agentInlineDocuments: 2   # DocHub agents: top hits a search returns whole (within directReadTokens); 0 = off
+#     agentPlanner: false       # DocHub agents: let DocHub run its LLM query planner on their searches
 #   # (optional) «Агенты DocHub»: a trimmed builder for agents pinned to one collection
 #   agents:
 #     endpoint: "RNT"           # the agents' endpoint (for a custom endpoint, its name)
 #     model: "current_model"
 #     office: true              # Word/PowerPoint/Excel tools on new agents by default
+#     thinking: false           # the agents' model reasons; overrides the `thinking` classifier
 
 # Reasoning on demand (custom OpenAI-compatible gateways: vLLM/SGLang/LiteLLM).
 # A classifier model reads each user message and decides whether the chat model

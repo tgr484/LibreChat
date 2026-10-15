@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, MessageSquare } from 'lucide-react';
 import { QueryKeys } from 'librechat-data-provider';
 import { useQueryClient } from '@tanstack/react-query';
+import { useGetModelsQuery } from 'librechat-data-provider/react-query';
 import { Input, Label, Button, Spinner, Checkbox, useToastContext } from '@librechat/client';
 import type {
   Agent,
@@ -42,14 +43,15 @@ type DochubAgentDraft = {
   instructions: string;
   collection: Pick<TDochubCollection, 'id' | 'name'> | null;
   office: boolean;
+  model: string;
 };
 
 const labelClass = 'mb-1 block text-[11px] font-medium uppercase tracking-wide text-text-secondary';
 
 /**
  * «Агенты DocHub»: a trimmed agent builder. The user picks a collection, names
- * the agent and optionally edits its instructions; the model and the tools are
- * fixed by the server.
+ * the agent, picks a model of the operator's endpoint and optionally edits its
+ * instructions; the endpoint and the tools are fixed by the server.
  */
 export default function DochubAgentPanel() {
   const localize = useLocalize();
@@ -66,6 +68,10 @@ export default function DochubAgentPanel() {
     [collectionsQuery.data],
   );
 
+  const modelsQuery = useGetModelsQuery({ enabled: !!settings });
+  /** The endpoint's models; the stored and default ones stay listed even if the list lags. */
+  const endpointModels = modelsQuery.data?.[settings?.endpoint ?? ''];
+
   const [agentId, setAgentId] = useState<string>('');
   const expandedQuery = useGetExpandedAgentByIdQuery(agentId, { enabled: !!agentId });
 
@@ -75,6 +81,7 @@ export default function DochubAgentPanel() {
     instructions: '',
     collection: null,
     office: settings?.office ?? true,
+    model: settings?.model ?? '',
   });
   const [draft, setDraft] = useState<DochubAgentDraft>(emptyDraft);
 
@@ -95,8 +102,9 @@ export default function DochubAgentPanel() {
         ? { id: pin.collection_id, name: pin.collection_name ?? String(pin.collection_id) }
         : null,
       office: OFFICE_TOOLS.some((tool) => agent.tools?.includes(tool)),
+      model: agent.model ?? settings?.model ?? '',
     });
-  }, [agentId, expandedQuery.data]);
+  }, [agentId, expandedQuery.data, settings?.model]);
 
   const onSaved = (agent: Agent) => {
     queryClient.invalidateQueries([QueryKeys.dochubAgents]);
@@ -150,6 +158,7 @@ export default function DochubAgentPanel() {
       instructions: draft.instructions,
       tools: [...DOCHUB_AGENT_TOOLS, ...(draft.office ? OFFICE_TOOLS : [])],
       dochub: { collection_id: draft.collection.id },
+      model: draft.model || settings.model,
     };
     if (agentId) {
       update.mutate({ agent_id: agentId, data: fields });
@@ -158,12 +167,14 @@ export default function DochubAgentPanel() {
     const params: AgentCreateParams = {
       ...fields,
       provider: settings.endpoint,
-      model: settings.model,
       model_parameters: DEFAULT_MODEL_PARAMETERS,
     };
     create.mutate(params);
   };
 
+  const modelOptions = [
+    ...new Set([draft.model, settings.model, ...(endpointModels ?? [])].filter(Boolean)),
+  ];
   const agents = agentsQuery.data?.data ?? [];
   const current = agents.find((agent) => agent.id === agentId);
   const collectionsError =
@@ -299,9 +310,26 @@ export default function DochubAgentPanel() {
             {localize('com_ui_dochub_office')}
           </label>
 
-          <p className="text-xs text-text-secondary">
-            {localize('com_ui_dochub_model_note', { model: settings.model })}
-          </p>
+          <div className="flex flex-col">
+            <Label className={labelClass} htmlFor="dochub-agent-model">
+              {localize('com_ui_model')}
+            </Label>
+            <select
+              id="dochub-agent-model"
+              value={draft.model}
+              onChange={(event) => setDraft({ ...draft, model: event.target.value })}
+              className="h-9 w-full rounded-lg border border-border-light bg-surface-secondary px-2 text-sm text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
+            >
+              {modelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-text-secondary">
+              {localize('com_ui_dochub_model_note')}
+            </p>
+          </div>
 
           <div className="flex items-center justify-end gap-2">
             {current && (

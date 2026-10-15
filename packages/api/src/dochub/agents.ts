@@ -231,20 +231,56 @@ const ALLOWED_TOOLS = new Set([...DOCHUB_AGENT_TOOL_NAMES, ...OFFICE_TOOL_NAMES]
 
 /**
  * A DocHub agent is a fixed shape: its collection's pinned tools, optionally
- * the Office tools, and the operator's model. Whatever else the client sends
- * in those fields is replaced.
+ * the Office tools, and the operator's endpoint. The model is the author's
+ * choice among that endpoint's models; a new agent without one gets the
+ * operator's default, and an update without one keeps the stored model.
  */
-function enforceShape<T extends DochubAgentData>(data: T, settings: TDochubAgentsStartup): T {
+function enforceShape<T extends DochubAgentData>(
+  data: T,
+  settings: TDochubAgentsStartup,
+  isNew: boolean,
+): T {
   const requested = data.tools ?? [...(settings.office ? OFFICE_TOOL_NAMES : [])];
   const extras = requested.filter(
     (name) => ALLOWED_TOOLS.has(name) && !DOCHUB_AGENT_TOOLS.has(name),
   );
+  const { model: _model, ...rest } = data;
+  const model = data.model?.trim() || (isNew ? settings.model : undefined);
   return {
-    ...data,
+    ...rest,
     tools: [...DOCHUB_AGENT_TOOL_NAMES, ...new Set(extras)],
     provider: settings.endpoint,
-    model: settings.model,
-  };
+    ...(model ? { model } : {}),
+  } as T;
+}
+
+const MODEL_UNAVAILABLE: Failure = {
+  ok: false,
+  status: 400,
+  code: 'dochub_model_unavailable',
+  message: 'The model is not offered by the DocHub agents endpoint',
+};
+
+/**
+ * The chosen model must be one the operator's endpoint offers, so an agent
+ * cannot be pointed at a model the gateway would refuse. The default model is
+ * always accepted; without a way to list the endpoint's models the choice is
+ * dropped and the default stays.
+ */
+async function checkModel<T extends DochubAgentData>(
+  data: T,
+  settings: TDochubAgentsStartup,
+  listModels: ((endpoint: string) => Promise<string[]>) | undefined,
+): Promise<T | Failure> {
+  const chosen = data.model?.trim();
+  if (!chosen || chosen === settings.model) {
+    return data;
+  }
+  if (!listModels) {
+    return { ...data, model: undefined };
+  }
+  const offered = await listModels(settings.endpoint);
+  return offered.includes(chosen) ? data : MODEL_UNAVAILABLE;
 }
 
 /**
@@ -262,17 +298,19 @@ export async function prepareDochubAgent<T extends DochubAgentData>(params: {
   req: ServerRequest;
   data: T;
   loadExisting?: () => Promise<DochubAgentData['dochub'] | undefined>;
+  /** The models the endpoint offers, for checking the author's choice. */
+  listModels?: (endpoint: string) => Promise<string[]>;
 }): Promise<{ ok: true; data: T } | Failure> {
-  const { req, data } = params;
-  const touchesShape = data.tools != null || data.provider != null || data.model != null;
-  const existing = data.dochub != null || touchesShape ? await params.loadExisting?.() : undefined;
-  if (data.dochub == null && existing == null) {
-    return { ok: true, data };
+  const { req, data: input } = params;
+  const touchesShape = input.tools != null || input.provider != null || input.model != null;
+  const existing = input.dochub != null || touchesShape ? await params.loadExisting?.() : undefined;
+  if (input.dochub == null && existing == null) {
+    return { ok: true, data: input };
   }
   if (
     existing != null &&
-    data.dochub != null &&
-    existing.collection_id !== data.dochub.collection_id
+    input.dochub != null &&
+    existing.collection_id !== input.dochub.collection_id
   ) {
     return {
       ok: false,
@@ -281,17 +319,21 @@ export async function prepareDochubAgent<T extends DochubAgentData>(params: {
       message: 'The collection of a DocHub agent cannot be changed',
     };
   }
-
   const settings = resolveDochubAgentsConfig(req.config);
   if (!settings) {
     return SESSION_FAILURES.not_configured;
   }
+  const checked = await checkModel(input, settings, params.listModels);
+  if (isFailure(checked)) {
+    return checked;
+  }
+  const data = checked;
   if (data.dochub == null) {
-    return { ok: true, data: enforceShape(data, settings) };
+    return { ok: true, data: enforceShape(data, settings, false) };
   }
 
   if (existing != null) {
-    return { ok: true, data: { ...enforceShape(data, settings), dochub: existing } };
+    return { ok: true, data: { ...enforceShape(data, settings, false), dochub: existing } };
   }
 
   const pin = data.dochub;
@@ -301,7 +343,7 @@ export async function prepareDochubAgent<T extends DochubAgentData>(params: {
   if (isFailure(result)) {
     return result;
   }
-  const shaped = enforceShape(data, settings);
+  const shaped = enforceShape(data, settings, true);
   return {
     ok: true,
     data: { ...shaped, dochub: { collection_id: result.id, collection_name: result.name } },

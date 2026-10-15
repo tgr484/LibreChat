@@ -1,4 +1,4 @@
-import type { CodeApprovalMode, TEndpointOption } from 'librechat-data-provider';
+import type { CodeApprovalMode, TEndpointOption, TEphemeralAgent } from 'librechat-data-provider';
 import type { IUser, AppConfig, IConversation } from '@librechat/data-schemas';
 import type { Request } from 'express';
 
@@ -23,6 +23,8 @@ export type RequestBody = {
   /** Browser IANA timezone used to resolve local-time prompt variables (e.g. `{{current_datetime}}`). */
   timezone?: string;
   codeApprovalMode?: CodeApprovalMode;
+  /** Chat toggles of a plain chat; also carries the user's reasoning choice. */
+  ephemeralAgent?: TEphemeralAgent | null;
 };
 
 export type ServerRequest = Request<unknown, unknown, RequestBody> & {

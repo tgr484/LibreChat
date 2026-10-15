@@ -32,6 +32,10 @@ jest.mock('~/data-provider', () => ({
   usePublishDochubCollectionMutation: () => ({ mutate: mockPublish }),
 }));
 
+jest.mock('librechat-data-provider/react-query', () => ({
+  useGetModelsQuery: () => ({ data: { RNT: ['qwen', 'qwen-big'], openAI: ['gpt-4o'] } }),
+}));
+
 jest.mock('~/hooks', () => ({
   useLocalize: () => (key: string, vars?: Record<string, unknown>) =>
     vars ? `${key} ${JSON.stringify(vars)}` : key,
@@ -101,7 +105,7 @@ describe('DochubAgentPanel', () => {
     expect(screen.getByText('com_ui_dochub_no_collections')).toBeInTheDocument();
   });
 
-  it('creates a pinned agent with the fixed model and tools', () => {
+  it('creates a pinned agent with the default model and the fixed tools', () => {
     render(<DochubAgentPanel />);
     fireEvent.change(screen.getByLabelText(/com_ui_dochub_collection/), {
       target: { value: '7' },
@@ -128,6 +132,25 @@ describe('DochubAgentPanel', () => {
           'create_spreadsheet',
         ],
       }),
+    );
+  });
+
+  it("offers the endpoint's models and saves the chosen one", () => {
+    render(<DochubAgentPanel />);
+    const modelSelect = screen.getByLabelText('com_ui_model');
+    expect(modelSelect).toHaveValue('qwen');
+    expect(
+      Array.from((modelSelect as HTMLSelectElement).options).map((option) => option.value),
+    ).toEqual(['qwen', 'qwen-big']);
+
+    fireEvent.change(screen.getByLabelText(/com_ui_dochub_collection/), {
+      target: { value: '7' },
+    });
+    fireEvent.change(modelSelect, { target: { value: 'qwen-big' } });
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_create' }));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'RNT', model: 'qwen-big' }),
     );
   });
 
