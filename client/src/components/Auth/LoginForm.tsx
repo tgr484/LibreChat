@@ -3,10 +3,27 @@ import { useForm } from 'react-hook-form';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { ThemeContext, SecretInput, Spinner, Button, Input, isDark } from '@librechat/client';
 import type { TLoginUser, TStartupConfig } from 'librechat-data-provider';
+import type { TranslationKeys } from '~/hooks';
 import type { TAuthContext } from '~/common';
 import { useResendVerificationEmail, useGetStartupConfig } from '~/data-provider';
 import { validateEmail } from '~/utils';
 import { useLocalize } from '~/hooks';
+
+type TLoginFieldKeys = Record<'label' | 'ariaLabel' | 'required' | 'maxLength', TranslationKeys>;
+
+const emailFieldKeys: TLoginFieldKeys = {
+  label: 'com_auth_email_address',
+  ariaLabel: 'com_auth_email',
+  required: 'com_auth_email_required',
+  maxLength: 'com_auth_email_max_length',
+};
+
+const usernameFieldKeys: TLoginFieldKeys = {
+  label: 'com_auth_login_username',
+  ariaLabel: 'com_auth_login_username',
+  required: 'com_auth_login_username_required',
+  maxLength: 'com_auth_login_username_max_length',
+};
 
 type TLoginFormProps = {
   onSubmit: (data: TLoginUser) => void;
@@ -29,6 +46,8 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
 
   const { data: config } = useGetStartupConfig();
   const useUsernameLogin = config?.ldap?.username;
+  const isLdapLogin = config?.ldap?.enabled === true;
+  const loginFieldKeys = useUsernameLogin ? usernameFieldKeys : emailFieldKeys;
   const validTheme = isDark(theme) ? 'dark' : 'light';
   const requireCaptcha = Boolean(startupConfig.turnstile?.siteKey);
   const authInputClassName =
@@ -100,10 +119,10 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
               type="text"
               id="email"
               autoComplete={useUsernameLogin ? 'username' : 'email'}
-              aria-label={localize('com_auth_email')}
+              aria-label={localize(loginFieldKeys.ariaLabel)}
               {...register('email', {
-                required: localize('com_auth_email_required'),
-                maxLength: { value: 120, message: localize('com_auth_email_max_length') },
+                required: localize(loginFieldKeys.required),
+                maxLength: { value: 120, message: localize(loginFieldKeys.maxLength) },
                 validate: useUsernameLogin
                   ? undefined
                   : (value) => validateEmail(value, localize('com_auth_email_pattern')),
@@ -113,9 +132,7 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
               placeholder=" "
             />
             <label htmlFor="email" className={authLabelClassName}>
-              {useUsernameLogin
-                ? localize('com_auth_username').replace(/ \(.*$/, '')
-                : localize('com_auth_email_address')}
+              {localize(loginFieldKeys.label)}
             </label>
           </div>
           {renderError('email')}
@@ -128,10 +145,12 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
               aria-label={localize('com_auth_password')}
               {...register('password', {
                 required: localize('com_auth_password_required'),
-                minLength: {
-                  value: startupConfig?.minPasswordLength || 8,
-                  message: localize('com_auth_password_min_length'),
-                },
+                minLength: isLdapLogin
+                  ? undefined
+                  : {
+                      value: startupConfig?.minPasswordLength || 8,
+                      message: localize('com_auth_password_min_length'),
+                    },
                 maxLength: { value: 128, message: localize('com_auth_password_max_length') },
               })}
               aria-invalid={!!errors.password}

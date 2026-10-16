@@ -113,7 +113,11 @@ function Login() {
 
   return (
     <>
-      {error != null && <ErrorMessage>{localize(getLoginError(error))}</ErrorMessage>}
+      {error != null && (
+        <ErrorMessage>
+          {localize(getLoginError(error, startupConfig?.ldap?.enabled === true))}
+        </ErrorMessage>
+      )}
       {startupConfig?.emailLoginEnabled === true && (
         <LoginForm
           onSubmit={login}
