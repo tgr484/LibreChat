@@ -44,7 +44,7 @@ describe('requireLdapAuth login audit', () => {
     expect(req.user).toBe(user);
     expect(next).toHaveBeenCalledWith();
     expect(infoSpy).toHaveBeenCalledWith(
-      '[Login] [Login successful] [Username: ivanov] [Request-IP: 10.0.0.5]',
+      '[Login] [Login successful] [Username: ivanov] [User-ID: u1] [Request-IP: 10.0.0.5]',
     );
     expect(errorSpy).not.toHaveBeenCalled();
   });
