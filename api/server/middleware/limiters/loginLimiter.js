@@ -1,6 +1,7 @@
 const rateLimit = require('express-rate-limit');
+const { logger } = require('@librechat/data-schemas');
 const { ErrorTypes, ViolationTypes } = require('librechat-data-provider');
-const { limiterCache, removePorts } = require('@librechat/api');
+const { limiterCache, removePorts, formatLoginAttempt } = require('@librechat/api');
 const { isOAuthNavigation, redirectOAuthFailure } = require('~/server/middleware/oauthNavigation');
 const { logViolation } = require('~/cache');
 
@@ -18,6 +19,9 @@ const handler = async (req, res) => {
     windowInMinutes,
   };
 
+  logger.warn(
+    `[Login] [Rate limited] ${formatLoginAttempt({ username: req.body?.email, ip: req.ip })} [Window: ${windowInMinutes} min, Max: ${max}]`,
+  );
   await logViolation(req, res, type, errorMessage, score);
 
   /** A browser navigation would render the JSON body as the page. */

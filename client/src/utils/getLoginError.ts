@@ -1,7 +1,10 @@
 import { TranslationKeys } from '~/hooks';
 
-const getLoginError = (errorText: string): TranslationKeys => {
-  const defaultError: TranslationKeys = 'com_auth_error_login';
+/** LDAP rejects bad credentials with a bare status code, so its fallback names the likely cause. */
+const getLoginError = (errorText: string, isLdapLogin = false): TranslationKeys => {
+  const defaultError: TranslationKeys = isLdapLogin
+    ? 'com_auth_error_login_ldap'
+    : 'com_auth_error_login';
 
   if (!errorText) {
     return defaultError;

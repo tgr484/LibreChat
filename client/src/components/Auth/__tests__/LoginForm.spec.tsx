@@ -161,3 +161,46 @@ test('displays validation error messages', async () => {
   expect(getByText(/You must enter a valid email address/i)).toBeInTheDocument();
   expect(getByText(/Password must be at least 8 characters/i)).toBeInTheDocument();
 });
+
+describe('LDAP username login', () => {
+  const ldapStartupConfig: TStartupConfig = {
+    ...mockStartupConfig,
+    ldap: { enabled: true, username: true },
+  };
+
+  const renderLdapForm = () => {
+    setup({
+      useGetStartupConfigReturnValue: { isLoading: false, isError: false, data: ldapStartupConfig },
+    });
+    return render(
+      <Login
+        onSubmit={mockLogin}
+        startupConfig={ldapStartupConfig}
+        error={undefined}
+        setError={jest.fn()}
+      />,
+    );
+  };
+
+  test('asks for a username instead of an email', async () => {
+    const { getByLabelText, getByText, queryByText } = renderLdapForm();
+
+    await userEvent.type(getByLabelText(/password/i), 'secret');
+    await userEvent.click(getByTestId(document.body, 'login-button'));
+
+    expect(getByLabelText('Username')).toBeInTheDocument();
+    expect(getByText('Username is required')).toBeInTheDocument();
+    expect(queryByText(/email/i)).not.toBeInTheDocument();
+  });
+
+  test('leaves password length to the directory policy', async () => {
+    const { getByLabelText, queryByText } = renderLdapForm();
+
+    await userEvent.type(getByLabelText('Username'), 'ivanov');
+    await userEvent.type(getByLabelText(/password/i), 'short');
+    await userEvent.click(getByTestId(document.body, 'login-button'));
+
+    expect(queryByText(/Password must be at least/i)).not.toBeInTheDocument();
+    expect(mockLogin).toHaveBeenCalledWith({ email: 'ivanov', password: 'short' });
+  });
+});

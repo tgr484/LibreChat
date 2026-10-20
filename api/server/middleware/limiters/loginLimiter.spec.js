@@ -24,6 +24,7 @@ const createApp = () => {
   const { markOAuthNavigation } = require('../oauthNavigation');
   const loginLimiter = require('./loginLimiter');
   const { logViolation } = require('~/cache');
+  const { logger } = require('@librechat/data-schemas');
 
   const app = express();
   app.set('trust proxy', 1);
@@ -32,7 +33,7 @@ const createApp = () => {
   app.use('/oauth', markOAuthNavigation, loginLimiter);
   app.get('/oauth/openid', (_req, res) => res.status(204).end());
 
-  return { app, logViolation };
+  return { app, logViolation, logger };
 };
 
 describe('loginLimiter', () => {
@@ -56,6 +57,29 @@ describe('loginLimiter', () => {
       message: 'Too many login attempts, please try again after 5 minutes.',
     });
     expect(logViolation).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes the blocked login and IP to the audit log', async () => {
+    const { app, logger } = createApp();
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const credentials = { email: 'ivanov', password: 'secret' };
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('x-forwarded-for', '198.51.100.4')
+      .send(credentials)
+      .expect(204);
+    await request(app)
+      .post('/api/auth/login')
+      .set('x-forwarded-for', '198.51.100.4')
+      .send(credentials)
+      .expect(429);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[Login] [Rate limited] [Username: ivanov] [Request-IP: 198.51.100.4] [Window: 5 min, Max: 1]',
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('secret');
+    warnSpy.mockRestore();
   });
 
   it('redirects a rate limited OAuth navigation to the login page', async () => {
