@@ -1,6 +1,7 @@
 import { logger } from '@librechat/data-schemas';
-import { PrincipalType, ResourceType } from 'librechat-data-provider';
+import { ErrorTypes, PrincipalType, ResourceType } from 'librechat-data-provider';
 import type {
+  Agent,
   TDochubErrorCode,
   TDochubCollection,
   TDochubAgentsStartup,
@@ -15,6 +16,7 @@ import { DOCHUB_AGENT_TOOL_NAMES } from '~/tools/toolkits/dochub';
 import { OFFICE_TOOL_NAMES } from '~/tools/toolkits/office';
 import { openDochubSession } from './session';
 import { isDochubConfigured } from './config';
+import { primeDochubCatalog } from './tools';
 import { DochubError } from './errors';
 
 /**
@@ -42,6 +44,17 @@ const SECTIONS: ReadonlyArray<[keyof DochubCollectionsResponse, TDochubCollectio
   ['public', 'viewer'],
 ];
 
+/** DocHub's SQLite may hand over `0/1`; the share rules compare with `=== true`. */
+function visibilityOf(
+  collection: DochubCollectionSummary,
+  section: keyof DochubCollectionsResponse,
+): boolean | null {
+  if (collection.is_public != null) {
+    return Boolean(collection.is_public);
+  }
+  return section === 'public' ? true : null;
+}
+
 /**
  * One flat list for the picker. A DocHub that predates `is_public`/`role` still
  * works: the section implies the role, and only the `public` section is known
@@ -55,7 +68,7 @@ export function flattenCollections(response: DochubCollectionsResponse): TDochub
       description: collection.description,
       document_count: collection.document_count,
       ...(collection.owner_username != null ? { owner_username: collection.owner_username } : {}),
-      is_public: collection.is_public ?? (section === 'public' ? true : null),
+      is_public: visibilityOf(collection, section),
       role: collection.role ?? fallbackRole,
       section,
     })),
@@ -137,20 +150,25 @@ async function withSession<T>(
 const isFailure = (value: unknown): value is Failure =>
   (value as Failure | undefined)?.ok === false;
 
+const COLLECTION_UNAVAILABLE: Failure = {
+  ok: false,
+  status: 404,
+  code: 'dochub_collection_unavailable',
+  message: 'The collection is not available to this user',
+};
+
+const pickCollection = (
+  response: DochubCollectionsResponse,
+  collectionId: number,
+): TDochubCollection | Failure =>
+  flattenCollections(response).find((collection) => collection.id === collectionId) ??
+  COLLECTION_UNAVAILABLE;
+
 async function findCollection(
   session: DochubSession,
   collectionId: number,
 ): Promise<TDochubCollection | Failure> {
-  const collections = flattenCollections(await session.client.listCollections());
-  const found = collections.find((collection) => collection.id === collectionId);
-  return (
-    found ?? {
-      ok: false,
-      status: 404,
-      code: 'dochub_collection_unavailable',
-      message: 'The collection is not available to this user',
-    }
-  );
+  return pickCollection(await session.client.listCollections(), collectionId);
 }
 
 const sendFailure = (res: Response, failure: Failure): Response =>
@@ -430,4 +448,44 @@ export function createDochubShareGate(deps: {
       return res.status(500).json({ error: 'dochub_unavailable', message: 'Share check failed' });
     }
   };
+}
+
+/**
+ * The share gate's rule, checked again on every chat: a DocHub agent serves
+ * anyone besides its author only while its collection is public, so an agent
+ * whose collection went private stops working for its recipients instead of
+ * quietly answering from a collection they were never meant to reach. The
+ * author is never blocked. Only a definite answer from DocHub blocks; when
+ * DocHub cannot be asked, the tools still meet its own access checks. The
+ * listing is handed on to the tools of the same turn.
+ *
+ * @throws An error whose message is the `{ type, info }` JSON the chat shows.
+ */
+export async function assertDochubAgentAvailable(params: {
+  req: ServerRequest;
+  agent: Pick<Agent, 'author' | 'dochub'>;
+}): Promise<void> {
+  const { req, agent } = params;
+  const pin = agent.dochub;
+  if (pin?.collection_id == null || String(agent.author ?? '') === String(req.user?.id ?? '')) {
+    return;
+  }
+  const result = await withSession(req, 'agent access', async (session) => {
+    const response = await session.client.listCollections();
+    primeDochubCatalog(req, session.sub, response);
+    return pickCollection(response, pin.collection_id);
+  });
+
+  const unavailable = isFailure(result) && result.code === COLLECTION_UNAVAILABLE.code;
+  if (!unavailable && (isFailure(result) || result.is_public === true)) {
+    return;
+  }
+  const name = (isFailure(result) ? undefined : result.name) ?? pin.collection_name ?? '';
+  const type = unavailable
+    ? ErrorTypes.DOCHUB_COLLECTION_UNAVAILABLE
+    : ErrorTypes.DOCHUB_COLLECTION_PRIVATE;
+  logger.info(
+    `[dochub] agent blocked for user ${req.user?.id}: collection ${pin.collection_id} ${type}`,
+  );
+  throw new Error(JSON.stringify({ type, info: name }));
 }

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, CopyCheck } from 'lucide';
+import { useQueryClient } from '@tanstack/react-query';
 import { Share2Icon, Users, UserCheck, AlertCircle } from 'lucide-react';
-import { AccessRoleIds, ResourceType, SystemRoles } from 'librechat-data-provider';
+import { QueryKeys, AccessRoleIds, ResourceType, SystemRoles } from 'librechat-data-provider';
 import {
   Alert,
   Label,
@@ -28,8 +29,8 @@ import {
   useAuthContext,
   useLocalize,
 } from '~/hooks';
+import { dochubErrorCode, dochubErrorKey } from '~/components/SidePanel/DochubAgents/errors';
 import { computeShareChanges, dedupeNewShares, principalKey } from './shareChanges';
-import { dochubErrorCode } from '~/components/SidePanel/DochubAgents/errors';
 import UnifiedPeopleSearch from './PeoplePicker/UnifiedPeopleSearch';
 import PeoplePickerAdminSettings from './PeoplePickerAdminSettings';
 import PublicSharingToggle from './PublicSharingToggle';
@@ -57,6 +58,7 @@ export default function GenericGrantAccessDialog({
 }) {
   const localize = useLocalize();
   const { user } = useAuthContext();
+  const queryClient = useQueryClient();
   const { showToast } = useToastContext();
   const [isCopying, setIsCopying] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -220,13 +222,12 @@ export default function GenericGrantAccessDialog({
       setHasChanges(false);
     } catch (error) {
       console.error('Error updating permissions:', error);
-      const dochubPrivate = dochubErrorCode(error) === 'dochub_collection_private';
+      const dochubCode = dochubErrorCode(error);
+      if (dochubCode != null) {
+        queryClient.invalidateQueries([QueryKeys.dochubCollections]);
+      }
       showToast({
-        message: localize(
-          dochubPrivate
-            ? 'com_ui_dochub_error_collection_private'
-            : 'com_ui_permissions_failed_update',
-        ),
+        message: localize(dochubCode ? dochubErrorKey(error) : 'com_ui_permissions_failed_update'),
         status: 'error',
       });
     }

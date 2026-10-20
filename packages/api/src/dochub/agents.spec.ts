@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { PrincipalType, ResourceType } from 'librechat-data-provider';
+import { ErrorTypes, PrincipalType, ResourceType } from 'librechat-data-provider';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { IUser, AppConfig } from '@librechat/data-schemas';
 import type { Response, NextFunction } from 'express';
@@ -15,6 +15,7 @@ import {
   prepareDochubAgent,
   flattenCollections,
   createDochubShareGate,
+  assertDochubAgentAvailable,
   resolveDochubAgentsConfig,
   listDochubCollectionsHandler,
   publishDochubCollectionHandler,
@@ -176,6 +177,15 @@ describe('flattenCollections', () => {
       [null, 'coauthor'],
       [true, 'viewer'],
     ]);
+  });
+
+  it('reads a 0/1 visibility as a boolean', () => {
+    const flat = flattenCollections({
+      my: [{ id: 1, name: 'a', description: null, document_count: 1, is_public: 1 as never }],
+      shared_with_me: [],
+      public: [],
+    });
+    expect(flat[0].is_public).toBe(true);
   });
 });
 
@@ -449,6 +459,25 @@ describe('createDochubShareGate', () => {
     expect(res.status).toHaveBeenCalledWith(409);
   });
 
+  it('asks DocHub on every share, so a collection made public there is let through', async () => {
+    const before = await run({
+      agent: { author: 'u1', dochub: { collection_id: 7 } },
+      body: { public: true },
+    });
+    expect(before.res.status).toHaveBeenCalledWith(409);
+
+    routes[`GET ${COLLECTIONS}`] = () => ({
+      status: 200,
+      body: { ...currentListing, my: [{ ...currentListing.my[0], is_public: true }] },
+    });
+    const after = await run({
+      agent: { author: 'u1', dochub: { collection_id: 7 } },
+      body: { public: true },
+    });
+    expect(after.next).toHaveBeenCalled();
+    expect(requests).toEqual([`GET ${COLLECTIONS}`, `GET ${COLLECTIONS}`]);
+  });
+
   it('never stands in the way of revoking or of regular agents', async () => {
     const revoke = await run({
       agent: { author: 'u1', dochub: { collection_id: 7 } },
@@ -466,5 +495,52 @@ describe('createDochubShareGate', () => {
     });
     expect(otherType.next).toHaveBeenCalled();
     expect(requests).toEqual([]);
+  });
+});
+
+describe('assertDochubAgentAvailable', () => {
+  const check = (agent: {
+    author?: string;
+    dochub?: { collection_id: number; collection_name?: string };
+  }) => assertDochubAgentAvailable({ req: makeReq(), agent });
+
+  const denial = async (promise: Promise<void>) => {
+    const error = await promise.then(
+      () => undefined,
+      (caught: Error) => caught,
+    );
+    return error ? JSON.parse(error.message) : undefined;
+  };
+
+  it('never blocks the author, even on a private collection, and never asks DocHub', async () => {
+    await expect(check({ author: 'u1', dochub: { collection_id: 7 } })).resolves.toBeUndefined();
+    await expect(check({ author: 'u9' })).resolves.toBeUndefined();
+    expect(requests).toEqual([]);
+  });
+
+  it('lets others use the agent while its collection is public', async () => {
+    await expect(check({ author: 'u9', dochub: { collection_id: 19 } })).resolves.toBeUndefined();
+    expect(requests).toEqual([`GET ${COLLECTIONS}`]);
+  });
+
+  it('blocks others once the collection is no longer public', async () => {
+    expect(await denial(check({ author: 'u9', dochub: { collection_id: 7 } }))).toEqual({
+      type: ErrorTypes.DOCHUB_COLLECTION_PRIVATE,
+      info: 'Кадровые вопросы',
+    });
+  });
+
+  it('blocks others when the collection left their listing, naming it from the pin', async () => {
+    expect(
+      await denial(
+        check({ author: 'u9', dochub: { collection_id: 42, collection_name: 'Охрана труда' } }),
+      ),
+    ).toEqual({ type: ErrorTypes.DOCHUB_COLLECTION_UNAVAILABLE, info: 'Охрана труда' });
+  });
+
+  it('does not block when DocHub cannot be asked', async () => {
+    /** Integration switched off in DocHub: not an answer about the collection. */
+    routes[`GET ${COLLECTIONS}`] = () => ({ status: 404, body: { detail: 'Not Found' } });
+    await expect(check({ author: 'u9', dochub: { collection_id: 7 } })).resolves.toBeUndefined();
   });
 });

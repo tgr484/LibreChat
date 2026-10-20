@@ -11,6 +11,7 @@ const mockPublish = jest.fn();
 const mockShowToast = jest.fn();
 const mockStartupConfig = jest.fn();
 const mockCollectionsQuery = jest.fn();
+const mockFetchQuery = jest.fn();
 
 jest.mock('@librechat/client', () => ({
   ...jest.requireActual('@librechat/client'),
@@ -19,7 +20,7 @@ jest.mock('@librechat/client', () => ({
 
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual('@tanstack/react-query'),
-  useQueryClient: () => ({ invalidateQueries: jest.fn() }),
+  useQueryClient: () => ({ invalidateQueries: jest.fn(), fetchQuery: mockFetchQuery }),
 }));
 
 jest.mock('~/data-provider', () => ({
@@ -64,6 +65,7 @@ const settings = { endpoint: 'RNT', model: 'qwen', office: true };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFetchQuery.mockResolvedValue({ collections: [collection()] });
   mockStartupConfig.mockReturnValue({ dochubAgents: settings });
   mockCollectionsQuery.mockReturnValue({
     data: { collections: [collection()] },
@@ -203,6 +205,24 @@ describe('ShareDochubAgent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'com_ui_dochub_share_confirm' }));
     expect(mockPublish).toHaveBeenLastCalledWith({ collectionId: 7 }, expect.any(Object));
+  });
+
+  it('re-asks DocHub on share and stops when the collection was made public there', async () => {
+    mockFetchQuery.mockResolvedValue({ collections: [collection({ is_public: true })] });
+    render(<ShareDochubAgent agent={agent} collection={collection()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_share' }));
+
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('com_ui_dochub_already_public'),
+        }),
+      ),
+    );
+    expect(mockFetchQuery).toHaveBeenCalledWith(['dochubCollections'], expect.any(Function), {
+      staleTime: 0,
+    });
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   it('explains that only a manager can publish', () => {

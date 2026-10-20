@@ -90,9 +90,12 @@ export function createDochubCatalog(params: {
     return created;
   };
 
+  let named = false;
+  /** The store may already hold a listing from an earlier call of the turn. */
   const listCollections = async (): Promise<DochubCollectionsResponse> => {
-    if (!store.collections) {
-      store.collections = await client.listCollections();
+    store.collections ??= await client.listCollections();
+    if (!named) {
+      named = true;
       for (const collection of allCollections(store.collections)) {
         names.set(collection.id, collection.name);
       }

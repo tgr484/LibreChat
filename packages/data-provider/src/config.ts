@@ -3563,6 +3563,14 @@ export enum ErrorTypes {
    * A manual compaction whose summarizer produced nothing; history is untouched
    */
   COMPACTION_FAILED = 'compaction_failed',
+  /**
+   * A shared DocHub agent whose collection is no longer public; `info` is the collection name
+   */
+  DOCHUB_COLLECTION_PRIVATE = 'dochub_collection_private',
+  /**
+   * A shared DocHub agent whose collection the user can no longer see; `info` is the collection name
+   */
+  DOCHUB_COLLECTION_UNAVAILABLE = 'dochub_collection_unavailable',
 }
 
 /**
