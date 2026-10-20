@@ -119,6 +119,10 @@ const errorMessages = {
     const provider = (alternateName[info] as string | undefined) ?? info;
     return localize('com_error_invalid_agent_provider', { 0: provider });
   },
+  [ErrorTypes.DOCHUB_COLLECTION_PRIVATE]: (json: TGenericError, localize: LocalizeFunction) =>
+    localize('com_error_dochub_collection_private', { 0: json.info }),
+  [ErrorTypes.DOCHUB_COLLECTION_UNAVAILABLE]: (json: TGenericError, localize: LocalizeFunction) =>
+    localize('com_error_dochub_collection_unavailable', { 0: json.info }),
   [ErrorTypes.GOOGLE_ERROR]: (json: TGenericError) => {
     const { info } = json;
     return info;

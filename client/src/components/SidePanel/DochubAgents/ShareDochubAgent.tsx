@@ -1,12 +1,6 @@
 import { useState } from 'react';
 import { Share2Icon } from 'lucide-react';
-import {
-  Permissions,
-  SystemRoles,
-  ResourceType,
-  PermissionBits,
-  PermissionTypes,
-} from 'librechat-data-provider';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Label,
   Button,
@@ -16,6 +10,15 @@ import {
   OGDialogTemplate,
   useToastContext,
 } from '@librechat/client';
+import {
+  QueryKeys,
+  dataService,
+  Permissions,
+  SystemRoles,
+  ResourceType,
+  PermissionBits,
+  PermissionTypes,
+} from 'librechat-data-provider';
 import type { Agent, TDochubCollection, TDochubPublishResponse } from 'librechat-data-provider';
 import { useLocalize, useAuthContext, useHasAccess, useResourcePermissions } from '~/hooks';
 import { usePublishDochubCollectionMutation } from '~/data-provider';
@@ -42,6 +45,7 @@ export default function ShareDochubAgent({
   const [preview, setPreview] = useState<TDochubPublishResponse | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const publish = usePublishDochubCollectionMutation();
+  const queryClient = useQueryClient();
 
   const hasAccessToShare = useHasAccess({
     permissionType: PermissionTypes.AGENTS,
@@ -82,9 +86,39 @@ export default function ShareDochubAgent({
     );
   };
 
-  const onOpenChange = (next: boolean) => {
+  /**
+   * The listing may predate a change made in DocHub itself. When DocHub now
+   * says the collection is public, the panel re-renders into the share dialog.
+   */
+  const recheck = async (): Promise<boolean> => {
+    try {
+      const fresh = await queryClient.fetchQuery(
+        [QueryKeys.dochubCollections],
+        () => dataService.getDochubCollections(),
+        { staleTime: 0 },
+      );
+      return fresh.collections.some((item) => item.id === collection.id && item.is_public === true);
+    } catch {
+      return false;
+    }
+  };
+
+  const onOpenChange = async (next: boolean) => {
     setOpen(next);
-    if (next && canPublish) {
+    if (!next) {
+      return;
+    }
+    setPreview(null);
+    setPreviewError(null);
+    if (await recheck()) {
+      setOpen(false);
+      showToast({
+        message: localize('com_ui_dochub_already_public', { name: collection.name }),
+        status: 'info',
+      });
+      return;
+    }
+    if (canPublish) {
       loadPreview();
     }
   };

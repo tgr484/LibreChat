@@ -8,7 +8,11 @@ import type {
 } from 'librechat-data-provider';
 import type { QueryObserverResult, UseQueryOptions } from '@tanstack/react-query';
 
-/** Collections the user can build a DocHub agent on, straight from DocHub. */
+/**
+ * Collections the user can build a DocHub agent on, straight from DocHub.
+ * Refetched on every return to the tab: visibility is often changed in DocHub
+ * itself, and the share button must follow it.
+ */
 export const useDochubCollectionsQuery = (
   config?: UseQueryOptions<TDochubCollectionsResponse>,
 ): QueryObserverResult<TDochubCollectionsResponse> =>
@@ -18,7 +22,7 @@ export const useDochubCollectionsQuery = (
     {
       retry: false,
       staleTime: 60_000,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: 'always',
       ...config,
     },
   );

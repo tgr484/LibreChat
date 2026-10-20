@@ -4,6 +4,7 @@ import type { DynamicStructuredTool } from '@librechat/agents/langchain/tools';
 import type {
   DochubAgentSettings,
   DochubCollectionSummary,
+  DochubCollectionsResponse,
   DochubDocumentRef,
   DochubSearchHit,
   DochubSearchResponse,
@@ -69,6 +70,18 @@ function storeFor(req: ServerRequest, sub: string): DochubCatalogStore {
   const created = createDochubCatalogStore();
   stores.set(sub, created);
   return created;
+}
+
+/**
+ * Hands a listing fetched before the run to the tools of the same turn, so
+ * they do not list the collections again.
+ */
+export function primeDochubCatalog(
+  req: ServerRequest,
+  sub: string,
+  collections: DochubCollectionsResponse,
+): void {
+  storeFor(req, sub).collections ??= collections;
 }
 
 /**

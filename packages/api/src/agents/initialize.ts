@@ -101,6 +101,7 @@ import { applyIntentLabels, sanitizeIntentLabels } from './intent';
 import { ContentFilterError } from '../middleware/contentFilter';
 import { createRequestAgentExecutionContext } from './runtime';
 import { filterFilesByEndpointRuntimeConfig } from '~/files';
+import { assertDochubAgentAvailable } from '~/dochub/agents';
 import { PARTIAL_RESOLVED_CONVERSATION } from './guard';
 import { applyBackgroundToolCalls } from './background';
 import { generateArtifactsPrompt } from '~/prompts';
@@ -844,6 +845,14 @@ export async function initializeAgent(
     throw agentTraversalError;
   }
 
+  /** Started here so the DocHub lookup overlaps resource priming; awaited before tools load. */
+  const dochubDenial: Promise<unknown> = params.req
+    ? assertDochubAgentAvailable({ req: params.req, agent }).then(
+        () => null,
+        (error: unknown) => error,
+      )
+    : Promise.resolve(null);
+
   /** Started here so the classifier call overlaps tool loading; awaited before the model is built. */
   const thinkingDecision = startThinkingDecision({
     key: params.req ?? runtime.requestBody,
@@ -1337,6 +1346,11 @@ export async function initializeAgent(
   const baseToolNames = agent.tools ?? [];
   const requestedToolNames =
     extraAllowedToolNames.length > 0 ? [...baseToolNames, ...extraAllowedToolNames] : baseToolNames;
+
+  const dochubError = await dochubDenial;
+  if (dochubError != null) {
+    throw dochubError;
+  }
 
   /**
    * `loadTools` failures take two forms:

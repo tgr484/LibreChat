@@ -1,6 +1,7 @@
 import React from 'react';
 import { ResourceType } from 'librechat-data-provider';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@testing-library/jest-dom/extend-expect';
 import GenericGrantAccessDialog from '../GenericGrantAccessDialog';
 
@@ -72,12 +73,14 @@ jest.mock('../PeoplePicker', () => ({
 
 const renderDialog = () =>
   render(
-    <GenericGrantAccessDialog
-      resourceDbId="agent-db-1"
-      resourceId="agent-1"
-      resourceName="Test Agent"
-      resourceType={ResourceType.AGENT}
-    />,
+    <QueryClientProvider client={new QueryClient()}>
+      <GenericGrantAccessDialog
+        resourceDbId="agent-db-1"
+        resourceId="agent-1"
+        resourceName="Test Agent"
+        resourceType={ResourceType.AGENT}
+      />
+    </QueryClientProvider>,
   );
 
 describe('GenericGrantAccessDialog - permissions load failure', () => {
