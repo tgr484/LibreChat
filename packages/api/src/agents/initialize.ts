@@ -108,12 +108,6 @@ import { generateArtifactsPrompt } from '~/prompts';
 import { getProviderConfig } from '~/endpoints';
 import { primeResources } from './resources';
 
-/**
- * Fraction of context budget reserved as headroom when no explicit maxContextTokens is set.
- * Reduced from 0.10 to 0.05 alongside the introduction of summarization, which actively
- * manages overflow. `createRun` can further override this via `SummarizationConfig.reserveRatio`.
- */
-const DEFAULT_RESERVE_RATIO = 0.05;
 const temporalSpecialVarRegex = /{{\s*(current_date|current_datetime|iso_datetime)\s*}}/i;
 const geminiModelVersionRegex = /^gemini-(\d+)(?:\.(\d+))?(?:-|$)/;
 const googleToolCombinationTextModels = [
@@ -421,9 +415,8 @@ export type InitializedAgent = Agent & {
   agentContextAttachments: IMongoFile[];
   toolContextMap: Record<string, unknown>;
   dynamicToolContextMap?: Record<string, unknown>;
+  /** Context limit before the agents SDK applies its reserve ratio. */
   maxContextTokens: number;
-  /** Pre-ratio context budget (agentMaxContextNum - maxOutputTokensNum). Used by createRun to apply a configurable reserve ratio. */
-  baseContextTokens?: number;
   useLegacyContent: boolean;
   resendFiles: boolean;
   /** Detail level LibreChat encodes image content blocks with, from the agent's
@@ -1857,7 +1850,7 @@ export async function initializeAgent(
 
   const agentMaxContextNum = Number(agentMaxContextTokens) || DEFAULT_MAX_CONTEXT_TOKENS;
   const maxOutputTokensNum = Number(maxOutputTokens) || 0;
-  const baseContextTokens = Math.max(0, agentMaxContextNum - maxOutputTokensNum);
+  const contextTokens = Math.max(0, agentMaxContextNum - maxOutputTokensNum);
 
   const toMongoFiles = (files: Array<TFile | undefined> | undefined): IMongoFile[] =>
     (files ?? []).filter((a): a is TFile => a != null).map((a) => a as unknown as IMongoFile);
@@ -1907,7 +1900,6 @@ export async function initializeAgent(
     semanticIntentBlockedToolNames,
     actionsEnabled,
     accessibleMcpServerNames: resolvedAuditNames,
-    baseContextTokens,
     memoryToolsRegistered: inlineMemoryRegistered,
     codeEnvAvailable: effectiveCodeEnvAvailable,
     statefulCodeSessions: effectiveStatefulSessions,
@@ -1934,7 +1926,7 @@ export async function initializeAgent(
     maxContextTokens:
       maxContextTokens != null && maxContextTokens > 0
         ? maxContextTokens
-        : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
+        : Math.max(1024, contextTokens),
     primedCodeFiles,
     endpointTokenConfig: options.endpointTokenConfig,
   };

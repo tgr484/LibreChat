@@ -32,7 +32,7 @@ jest.mock('@librechat/agents', () => ({
     enableToolOutputReferences === true ? 'bash {{tool<idx>turn<turn>}}' : 'bash',
 }));
 
-import { Providers } from '@librechat/agents';
+import { Providers, createPruneMessages } from '@librechat/agents';
 import {
   Constants,
   ErrorTypes,
@@ -83,6 +83,7 @@ const mockOptionalChainWithEmptyCheck = jest.fn();
 const mockGetThreadData = jest.fn();
 
 jest.mock('~/utils', () => ({
+  ...jest.requireActual('~/utils'),
   extractLibreChatParams: (...args: unknown[]) => mockExtractLibreChatParams(...args),
   getModelMaxTokens: (...args: unknown[]) => mockGetModelMaxTokens(...args),
   optionalChainWithEmptyCheck: (...args: unknown[]) => mockOptionalChainWithEmptyCheck(...args),
@@ -812,7 +813,7 @@ describe('initializeAgent — custom provider token lookup', () => {
     // Pipeline check: verifies endpointTokenConfig.context flows through the full
     // optionalChainWithEmptyCheck → Math.max formula. The toHaveBeenCalledWith
     // assertion above catches the actual provider-resolution regression.
-    expect(result.maxContextTokens).toBe(Math.round((65536 - 4096) * 0.95));
+    expect(result.maxContextTokens).toBe(65536 - 4096);
   });
 });
 
@@ -1629,7 +1630,7 @@ describe('initializeAgent — maxContextTokens', () => {
     expect(result.maxContextTokens).toBe(userValue);
   });
 
-  it('falls back to formula when maxContextTokens is NOT provided', async () => {
+  it('subtracts the output allowance without applying the SDK reserve', async () => {
     const modelDefault = 200000;
     const maxOutputTokens = 4096;
     const { agent, req, res, loadTools, db } = createMocks({
@@ -1651,7 +1652,7 @@ describe('initializeAgent — maxContextTokens', () => {
       db,
     );
 
-    const expected = Math.round((modelDefault - maxOutputTokens) * 0.95);
+    const expected = modelDefault - maxOutputTokens;
     expect(result.maxContextTokens).toBe(expected);
   });
 
@@ -1680,7 +1681,7 @@ describe('initializeAgent — maxContextTokens', () => {
     );
 
     expect(result.maxContextTokens).not.toBe(0);
-    const expected = Math.round((DEFAULT_MAX_CONTEXT_TOKENS - maxOutputTokens) * 0.95);
+    const expected = DEFAULT_MAX_CONTEXT_TOKENS - maxOutputTokens;
     expect(result.maxContextTokens).toBe(expected);
   });
 
@@ -1736,17 +1737,19 @@ describe('initializeAgent — maxContextTokens', () => {
       db,
     );
 
-    // Should NOT be overridden to Math.round((128000 - 4096) * 0.95) = 117,709
     expect(result.maxContextTokens).toBe(userValue);
   });
 
-  it('sets baseContextTokens to agentMaxContextNum minus maxOutputTokensNum', async () => {
-    const modelDefault = 200000;
-    const maxOutputTokens = 4096;
+  it('reserves five percent once for a configured custom model context', async () => {
     const { agent, req, res, loadTools, db } = createMocks({
-      maxContextTokens: undefined,
-      modelDefault,
-      maxOutputTokens,
+      provider: 'RNT',
+      overrideProvider: Providers.OPENAI,
+      model: 'Qwen-3.8-Flash',
+      maxOutputTokens: 0,
+      endpointTokenConfig: {
+        'Qwen-3.8-Flash': { context: 260000, prompt: 0, completion: 0 },
+      },
+      useRealTokenLookup: true,
     });
 
     const result = await initializeAgent(
@@ -1756,13 +1759,21 @@ describe('initializeAgent — maxContextTokens', () => {
         agent,
         loadTools,
         endpointOption: { endpoint: EModelEndpoint.agents },
-        allowedProviders: new Set([Providers.OPENAI]),
+        allowedProviders: new Set(['RNT']),
         isInitialAgent: true,
       },
       db,
     );
 
-    expect(result.baseContextTokens).toBe(modelDefault - maxOutputTokens);
+    const prune = createPruneMessages({
+      maxTokens: result.maxContextTokens,
+      provider: Providers.OPENAI,
+      startIndex: 0,
+      tokenCounter: () => 0,
+      indexTokenCountMap: {},
+    });
+
+    expect(prune({ messages: [] }).contextBudget).toBe(247000);
   });
 
   it('clamps maxContextTokens to at least 1024 for tiny models', async () => {
@@ -1787,8 +1798,6 @@ describe('initializeAgent — maxContextTokens', () => {
       db,
     );
 
-    // baseContextTokens = 1100 - 1050 = 50, formula would give ~47.5 rounded
-    // but Math.max(1024, ...) clamps it
     expect(result.maxContextTokens).toBe(1024);
   });
 });
