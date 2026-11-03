@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
+import { useSetAtom } from 'jotai';
 import { useToastContext } from '@librechat/client';
 import { EToolResources } from 'librechat-data-provider';
 import type { ExtendedFile } from '~/common';
+import { updateUploadProgressAtom } from '~/hooks/Files/progress';
 import { useDeleteFilesMutation } from '~/data-provider';
 import { logger, getCachedPreview } from '~/utils';
 import { useFileDeletion } from '~/hooks/Files';
+import UploadProgress from './UploadProgress';
 import FileContainer from './FileContainer';
 import { useLocalize } from '~/hooks';
 import Image from './Image';
@@ -58,6 +61,7 @@ export default function FileRow({
   onMovePastedTextInline?: (file: ExtendedFile) => void;
 }) {
   const localize = useLocalize();
+  const updateProgress = useSetAtom(updateUploadProgressAtom);
   const { showToast } = useToastContext();
   const files = Array.from(_files?.values() ?? []).filter((file) =>
     fileFilter ? fileFilter(file) : true,
@@ -143,6 +147,7 @@ export default function FileRow({
           )
           .uniqueFiles.map((file: ExtendedFile, fileIndex: number) => {
             const handleDelete = () => {
+              updateProgress({ type: 'clear', fileId: file.file_id });
               if (abortUpload && file.progress < 1) {
                 abortUpload(file.file_id);
               }
@@ -174,33 +179,40 @@ export default function FileRow({
                   flexShrink: 0,
                 }}
               >
-                {isImage ? (
-                  <Image
-                    url={getCachedPreview(file.file_id) ?? file.preview ?? file.filepath}
-                    onDelete={handleDelete}
-                    progress={file.progress}
-                    source={file.source}
-                  />
-                ) : (
-                  <FileContainer
-                    file={file}
-                    onDelete={handleDelete}
-                    onClick={isEditablePaste ? () => onEditPastedText(file) : undefined}
-                    ariaLabel={
-                      isEditablePaste
-                        ? localize('com_ui_pasted_text_edit_chip', { 0: file.filename ?? '' })
-                        : undefined
-                    }
-                    subtitleAction={
-                      isEditablePaste && onMovePastedTextInline != null
-                        ? {
-                            label: localize('com_ui_pasted_text_move_inline'),
-                            onClick: () => onMovePastedTextInline(file),
-                          }
-                        : undefined
-                    }
-                  />
-                )}
+                <UploadProgress fileId={file.file_id}>
+                  {(subtitle, processing) =>
+                    isImage ? (
+                      <Image
+                        url={getCachedPreview(file.file_id) ?? file.preview ?? file.filepath}
+                        onDelete={handleDelete}
+                        progress={file.progress}
+                        source={file.source}
+                        subtitle={subtitle}
+                        processing={processing}
+                      />
+                    ) : (
+                      <FileContainer
+                        file={file}
+                        subtitle={subtitle}
+                        onDelete={handleDelete}
+                        onClick={isEditablePaste ? () => onEditPastedText(file) : undefined}
+                        ariaLabel={
+                          isEditablePaste
+                            ? localize('com_ui_pasted_text_edit_chip', { 0: file.filename ?? '' })
+                            : undefined
+                        }
+                        subtitleAction={
+                          isEditablePaste && onMovePastedTextInline != null
+                            ? {
+                                label: localize('com_ui_pasted_text_move_inline'),
+                                onClick: () => onMovePastedTextInline(file),
+                              }
+                            : undefined
+                        }
+                      />
+                    )
+                  }
+                </UploadProgress>
               </div>
             );
           })}

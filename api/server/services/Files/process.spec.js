@@ -499,6 +499,32 @@ describe('processAgentFileUpload', () => {
   });
 
   describe('OCR strategy selection', () => {
+    test('forwards OCR progress through the upload stream using the temporary request id', async () => {
+      mergeFileConfig.mockReturnValue(makeFileConfig({ ocrSupportedMimeTypes: [PDF_MIME] }));
+      const ocr = { status: 'recognizing', pages_done: 3, page_count: 12 };
+      const handleFileUpload = jest.fn(async ({ onProgress }) => {
+        onProgress(ocr);
+        return { text: 'extracted text', bytes: 14, filepath: 'mistral_ocr' };
+      });
+      getStrategyFunctions.mockReturnValue({ handleFileUpload });
+      const req = makeReq({ mimetype: PDF_MIME, ocrConfig: { strategy: FileSources.mistral_ocr } });
+      const sseStream = {
+        signal: new AbortController().signal,
+        sendProgress: jest.fn(),
+        sendData: jest.fn(),
+      };
+      const metadata = { ...makeMetadata(), temp_file_id: 'browser-upload-id' };
+      await processAgentFileUpload({ req, res: mockRes, metadata, sseStream });
+      expect(handleFileUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: sseStream.signal }),
+      );
+      expect(sseStream.sendProgress).toHaveBeenCalledWith({
+        temp_file_id: 'browser-upload-id',
+        tool_resource: EToolResources.context,
+        ocr,
+      });
+      expect(sseStream.sendData).toHaveBeenCalled();
+    });
     test.each([
       ['PDF', PDF_MIME],
       ['DOCX', DOCX_MIME],

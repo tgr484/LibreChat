@@ -6,6 +6,11 @@ describe('loadOCRConfig', () => {
     expect(loadOCRConfig(undefined)).toBeUndefined();
   });
 
+  it('preserves explicit progress support and defaults it off', () => {
+    expect(loadOCRConfig({ progressEnabled: true })?.progressEnabled).toBe(true);
+    expect(loadOCRConfig({})?.progressEnabled).toBe(false);
+  });
+
   it('preserves allowedAddresses so the exemption survives config load', () => {
     const loaded = loadOCRConfig({
       apiKey: '${OCR_API_KEY}',

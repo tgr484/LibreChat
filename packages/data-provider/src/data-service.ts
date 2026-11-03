@@ -546,10 +546,11 @@ export const uploadImage = (
   data: FormData,
   signal?: AbortSignal | null,
   sseEnabled = false,
+  onProgress?: (data: f.TFileUploadProgress) => void,
 ): Promise<f.TFileUpload> => {
   const requestConfig = signal ? { signal } : undefined;
   if (sseEnabled) {
-    return uploadEventStream(endpoints.images(), data, signal);
+    return uploadEventStream(endpoints.images(), data, signal, onProgress);
   }
   return request.postMultiPart(endpoints.images(), data, requestConfig);
 };
@@ -558,10 +559,11 @@ export const uploadFile = (
   data: FormData,
   signal?: AbortSignal | null,
   sseEnabled = false,
+  onProgress?: (data: f.TFileUploadProgress) => void,
 ): Promise<f.TFileUpload> => {
   const requestConfig = signal ? { signal } : undefined;
   if (sseEnabled) {
-    return uploadEventStream(endpoints.files(), data, signal);
+    return uploadEventStream(endpoints.files(), data, signal, onProgress);
   }
   return request.postMultiPart(endpoints.files(), data, requestConfig);
 };

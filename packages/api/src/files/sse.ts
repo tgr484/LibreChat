@@ -1,3 +1,4 @@
+import type { TFileUploadProgress } from 'librechat-data-provider';
 import type { Request, Response } from 'express';
 import { getContentFilterError } from '~/middleware/contentFilter';
 import { isEnabled } from '~/utils';
@@ -34,6 +35,8 @@ export function shouldUseUploadSse(req: Request): boolean {
 }
 
 export interface UploadSseStream {
+  readonly signal: AbortSignal;
+  sendProgress: (data: TFileUploadProgress) => void;
   /** Emits the successful upload payload as an `event:data` message. */
   sendData: <T>(data: T) => void;
   /** Emits a failure payload as an `event:error` message. */
@@ -84,10 +87,12 @@ export function startUploadSseStream(res: Response): UploadSseStream {
   res.writeHead(200, SSE_HEADERS);
   res.flushHeaders();
 
+  const controller = new AbortController();
   let counter = 1;
   const intervalId = setInterval(() => {
     if (res.writableEnded || res.destroyed) {
       clearInterval(intervalId);
+      controller.abort();
       return;
     }
     writeSseEvent(res, 'heartbeat', { keepAlive: counter++ });
@@ -95,14 +100,17 @@ export function startUploadSseStream(res: Response): UploadSseStream {
 
   const stopHeartbeat = () => {
     clearInterval(intervalId);
+    controller.abort();
   };
   res.once('close', stopHeartbeat);
 
   return {
+    signal: controller.signal,
+    sendProgress: (data) => writeSseEvent(res, 'progress', data),
     sendData: (data) => writeSseEvent(res, 'data', data),
     sendError: (data) => writeSseEvent(res, 'error', data),
     close: () => {
-      clearInterval(intervalId);
+      stopHeartbeat();
       res.off('close', stopHeartbeat);
       if (!res.writableEnded && !res.destroyed) {
         writeSseEvent(res, 'close', { closedAt: new Date().toISOString() });

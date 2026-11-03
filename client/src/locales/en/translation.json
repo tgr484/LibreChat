@@ -2719,5 +2719,22 @@
   "com_insights_invalid_date_range": "Choose an end date after the start date, within {{days}} days.",
   "com_insights_sparkline_accessibility": "{{label}} over time",
   "com_nav_mobile_drawer_strip": "Show chat beside the sidebar on mobile",
-  "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar."
+  "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar.",
+  "com_ui_ocr_queued": "Queued for recognition",
+  "com_ui_ocr_parsing": "Parsing document",
+  "com_ui_ocr_recognizing": "Recognizing",
+  "com_ui_ocr_recognizing_count": "Recognizing: {{done}} of {{total}}",
+  "com_ui_ocr_assembling": "Assembling result",
+  "com_ui_ocr_finishing": "Finishing processing",
+  "com_ui_ocr_processing": "Processing document",
+  "com_ui_ocr_pages": "Pages",
+  "com_ui_ocr_sections": "Sections",
+  "com_ui_ocr_slides": "Slides",
+  "com_ui_ocr_sheets": "Sheets",
+  "com_ui_ocr_items": "Items",
+  "com_ui_ocr_count": "{{unit}}: {{done}} of {{total}}",
+  "com_ui_ocr_queue_position": "Queue position: {{position}}",
+  "com_ui_ocr_figures": "Figures: {{done}} of {{total}}",
+  "com_ui_ocr_retries": "Retry rounds: {{count}}",
+  "com_ui_ocr_retry_at": "Next retry: {{time}}"
 }

@@ -2335,6 +2335,7 @@ export const webSearchSchema = z.object({
 export type TWebSearchConfig = DeepPartial<z.infer<typeof webSearchSchema>>;
 
 export const ocrSchema = z.object({
+  progressEnabled: z.boolean().optional().default(false),
   allowedAddresses: allowedAddressesSchema,
   mistralModel: z.string().optional(),
   apiKey: z.string().optional().default('${OCR_API_KEY}'),

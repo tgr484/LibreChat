@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { v4 } from 'uuid';
+import { useSetAtom } from 'jotai';
 import debounce from 'lodash/debounce';
 import { useToastContext } from '@librechat/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,7 +25,6 @@ import type { TConversation } from 'librechat-data-provider';
 import type { SkippedUpload, UploadPartition } from '~/utils';
 import type { ExtendedFile, FileSetter } from '~/common';
 import {
-  logger,
   validateFiles,
   cachePreview,
   partitionUploads,
@@ -39,6 +39,7 @@ import useLocalize, { TranslationKeys } from '~/hooks/useLocalize';
 import { useDelayedUploadToast } from './useDelayedUploadToast';
 import { useChatContext } from '~/Providers/ChatContext';
 import store, { ephemeralAgentByConvoId } from '~/store';
+import { updateUploadProgressAtom } from './progress';
 import useClientResize from './useClientResize';
 import useUpdateFiles from './useUpdateFiles';
 
@@ -102,6 +103,7 @@ export const hasInFlightUpload = (fileId: string): boolean => uploadErrorCallbac
 
 type UploadScope = {
   queue: Promise<void>;
+  controllers: Map<string, AbortController>;
   /** Accepted uploads that have not been observed in the shared file state yet */
   recent: Map<string, ExtendedFile>;
 };
@@ -118,7 +120,11 @@ const getUploadScope = (fileSetter: FileSetter): UploadScope => {
     return scope;
   }
 
-  const created: UploadScope = { queue: Promise.resolve(), recent: new Map() };
+  const created: UploadScope = {
+    queue: Promise.resolve(),
+    recent: new Map(),
+    controllers: new Map(),
+  };
   uploadScopes.set(fileSetter, created);
   return created;
 };
@@ -145,7 +151,17 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
   const [errors, setErrors] = useState<string[]>([]);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const activeUploads = useRef(new Set<string>());
+  const updateProgress = useSetAtom(updateUploadProgressAtom);
+  useEffect(() => {
+    const ids = activeUploads.current;
+    return () => {
+      for (const fileId of ids) {
+        updateProgress({ type: 'clear', fileId });
+      }
+      ids.clear();
+    };
+  }, [updateProgress]);
   const { startUploadTimer, clearUploadTimer } = useDelayedUploadToast();
   const { files, setFiles, conversation } = fileState;
   const filesRef = useRef(files);
@@ -257,6 +273,21 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
 
   const uploadFile = useUploadFileMutation(
     {
+      onMutate: (body) => {
+        const fileId = String(body.get('file_id') ?? '');
+        if (uploadScope.controllers.get(fileId)?.signal.aborted) {
+          return;
+        }
+        activeUploads.current.add(fileId);
+        updateProgress({ type: 'start', fileId });
+      },
+      onProgress: (data, body) => {
+        const fileId = String(body.get('file_id') ?? '');
+        updateProgress({ type: 'update', fileId, ocr: data.ocr });
+        if (data.ocr) {
+          clearUploadTimer(fileId);
+        }
+      },
       onSuccess: (data, body) => {
         /** Every client-side handle for this upload — the file map key, the delayed
          * toast timer, the recovery callbacks — is the id the request was sent with.
@@ -265,6 +296,9 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
          * the attachment stays below `progress: 1` and the send button never
          * re-enables. Reconcile against the id we own. */
         const fileId = (body.get('file_id') as string | null) ?? data.temp_file_id;
+        updateProgress({ type: 'clear', fileId });
+        activeUploads.current.delete(fileId);
+        uploadScope.controllers.delete(fileId);
         takeUploadRecovery(fileId)?.onSuccess?.(fileId);
         clearUploadTimer(fileId);
         if (agent_id) {
@@ -313,6 +347,9 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
         const error = _error as TError | undefined;
         console.log('upload error', error);
         const file_id = body.get('file_id') as string;
+        updateProgress({ type: 'clear', fileId: file_id });
+        activeUploads.current.delete(file_id);
+        uploadScope.controllers.delete(file_id);
         const uploadLifecycle = takeUploadRecovery(file_id);
         const tool_resource = body.get('tool_resource');
         if (tool_resource === EToolResources.execute_code) {
@@ -335,7 +372,7 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
         uploadLifecycle?.onError?.(file_id);
       },
     },
-    abortControllerRef.current?.signal,
+    (body) => uploadScope.controllers.get(String(body.get('file_id') ?? ''))?.signal,
   );
 
   const uploadWithRecovery = (
@@ -343,6 +380,7 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
     file_id: string,
     uploadLifecycle?: UploadLifecycleCallbacks,
   ) => {
+    uploadScope.controllers.set(file_id, new AbortController());
     if (uploadLifecycle) {
       uploadErrorCallbacks.set(file_id, uploadLifecycle);
       uploadLifecycle.onStart?.(file_id);
@@ -482,8 +520,6 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
     _toolResource?: string,
     uploadLifecycle?: UploadLifecycleCallbacks,
   ): Promise<boolean> => {
-    abortControllerRef.current = new AbortController();
-
     const existingFiles = tracksReservations
       ? mergeRecentUploads(filesRef.current, uploadScope.recent)
       : filesRef.current;
@@ -843,18 +879,23 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
   };
 
   const abortUpload = (fileId?: string) => {
-    if (abortControllerRef.current) {
-      logger.log('files', 'Aborting upload');
-      abortControllerRef.current.abort('User aborted upload');
-      abortControllerRef.current = null;
-    }
     if (fileId) {
+      uploadScope.controllers.get(fileId)?.abort();
+      updateProgress({ type: 'clear', fileId });
+      activeUploads.current.delete(fileId);
+      clearUploadTimer(fileId);
+      deleteFileById(fileId);
       clearUploadRecovery(fileId);
       return;
     }
-    for (const uploadId of Array.from(uploadErrorCallbacks.keys())) {
+    for (const [uploadId, controller] of uploadScope.controllers) {
+      controller.abort();
+      updateProgress({ type: 'clear', fileId: uploadId });
+      clearUploadTimer(uploadId);
+      deleteFileById(uploadId);
       clearUploadRecovery(uploadId);
     }
+    activeUploads.current.clear();
   };
 
   return {

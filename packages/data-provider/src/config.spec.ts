@@ -20,6 +20,21 @@ const endpointsConfig: TEndpointsConfig = {
   Gemini: { type: EModelEndpoint.custom, userProvide: false, order: 9999 },
 };
 
+describe('OCR progress configuration', () => {
+  it('defaults progress off and preserves explicit opt-in', () => {
+    const disabled = configSchema.parse({ version: '1.0', ocr: {} });
+    const enabled = configSchema.parse({ version: '1.0', ocr: { progressEnabled: true } });
+    expect(disabled.ocr?.progressEnabled).toBe(false);
+    expect(enabled.ocr?.progressEnabled).toBe(true);
+  });
+
+  it('rejects a non-boolean progress flag', () => {
+    expect(
+      configSchema.safeParse({ version: '1.0', ocr: { progressEnabled: 'true' } }).success,
+    ).toBe(false);
+  });
+});
+
 describe('excludedKeys', () => {
   it.each([
     '_id',

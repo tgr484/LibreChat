@@ -15,7 +15,7 @@ import { useLocalize } from '~/hooks';
 
 export const useUploadFileMutation = (
   _options?: t.UploadMutationOptions,
-  signal?: AbortSignal | null,
+  signal?: AbortSignal | null | ((body: FormData) => AbortSignal | undefined),
 ): UseMutationResult<
   t.TFileUpload, // response data
   unknown, // error
@@ -25,22 +25,24 @@ export const useUploadFileMutation = (
   const { data: startupConfig } = useGetStartupConfig();
   const sseEnabled = startupConfig?.fileUploadSseEnabled === true;
   const queryClient = useQueryClient();
-  const { onSuccess, ...options } = _options || {};
+  const { onSuccess, onProgress, ...options } = _options || {};
   return useMutation([MutationKeys.fileUpload], {
     mutationFn: (body: FormData) => {
+      const requestSignal = typeof signal === 'function' ? signal(body) : signal;
       const width = body.get('width') ?? '';
       const height = body.get('height') ?? '';
       const version = body.get('version') ?? '';
       const endpoint = (body.get('endpoint') ?? '') as string;
+      const handleProgress = (data: t.TFileUploadProgress) => onProgress?.(data, body);
       if (isAssistantsEndpoint(endpoint) && version === '2') {
-        return dataService.uploadFile(body, signal, sseEnabled);
+        return dataService.uploadFile(body, requestSignal, sseEnabled, handleProgress);
       }
 
       if (width !== '' && height !== '') {
-        return dataService.uploadImage(body, signal, sseEnabled);
+        return dataService.uploadImage(body, requestSignal, sseEnabled, handleProgress);
       }
 
-      return dataService.uploadFile(body, signal, sseEnabled);
+      return dataService.uploadFile(body, requestSignal, sseEnabled, handleProgress);
     },
     ...options,
     onSuccess: (data, formData, context) => {
