@@ -405,9 +405,8 @@ export function shouldReplayReasoningContent(
 
 type RunAgent = Omit<Agent, 'tools'> & {
   tools?: GenericTool[];
+  /** Context limit before the agents SDK applies its reserve ratio. */
   maxContextTokens?: number;
-  /** Pre-ratio context budget from initializeAgent. */
-  baseContextTokens?: number;
   useLegacyContent?: boolean;
   toolContextMap?: Record<string, unknown>;
   dynamicToolContextMap?: Record<string, unknown>;
@@ -940,7 +939,6 @@ function shapeSummarizationConfig(
       retainRecent: config?.retainRecent,
     } satisfies AgentSummarizationConfig,
     contextPruning: config?.contextPruning as ContextPruningConfig | undefined,
-    reserveRatio: config?.reserveRatio,
   };
 }
 
@@ -955,22 +953,6 @@ function shapeSummarizationConfig(
  * user supplies no override.
  */
 const MIN_SUMMARIZATION_CONTEXT_TOKENS = 1024;
-
-/**
- * Applies `reserveRatio` against the pre-ratio base context budget, falling
- * back to the pre-computed `maxContextTokens` from initializeAgent.
- */
-function computeEffectiveMaxContextTokens(
-  reserveRatio: number | undefined,
-  baseContextTokens: number | undefined,
-  maxContextTokens: number | undefined,
-): number | undefined {
-  if (reserveRatio == null || reserveRatio <= 0 || reserveRatio >= 1 || baseContextTokens == null) {
-    return maxContextTokens;
-  }
-  const ratioComputed = Math.max(1024, Math.round(baseContextTokens * (1 - reserveRatio)));
-  return Math.min(maxContextTokens ?? ratioComputed, ratioComputed);
-}
 
 type CallbackClientOptions = {
   callbacks?: Callbacks;
@@ -1925,11 +1907,7 @@ export async function createRun({
       }
     }
 
-    const effectiveMaxContextTokens = computeEffectiveMaxContextTokens(
-      summarization.reserveRatio,
-      agent.baseContextTokens,
-      agent.maxContextTokens,
-    );
+    const effectiveMaxContextTokens = agent.maxContextTokens;
 
     const summarizationViable =
       effectiveMaxContextTokens == null ||

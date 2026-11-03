@@ -88,7 +88,13 @@ jest.mock('~/agents/checkpointer', () => ({
 
 import { ChatOpenAI } from '@librechat/agents/llm/openai';
 import { ChatOpenRouter } from '@librechat/agents/llm/openrouter';
-import { Run, Providers, buildChildInputs, InMemorySubagentTaskStore } from '@librechat/agents';
+import {
+  Run,
+  Providers,
+  StandardGraph,
+  buildChildInputs,
+  InMemorySubagentTaskStore,
+} from '@librechat/agents';
 
 /** Minimal RunAgent factory */
 function makeAgent(
@@ -217,6 +223,14 @@ async function callAndCapture(
   expect(createMock).toHaveBeenCalledTimes(1);
   const callArgs = createMock.mock.calls[0][0];
   return callArgs.graphConfig.agents as Array<Record<string, unknown>>;
+}
+
+function createCapturedGraph(): StandardGraph {
+  const { graphConfig } = jest.mocked(Run.create).mock.calls[0][0];
+  if (!('agents' in graphConfig)) {
+    throw new Error('Expected agent graph configuration');
+  }
+  return new StandardGraph({ agents: graphConfig.agents, tokenCounter: () => 0 });
 }
 
 /** Minimal AppConfig with a single custom endpoint for testing provider resolution. */
@@ -527,63 +541,38 @@ describe('model-level callbacks', () => {
 // Suite 1: reserveRatio
 // ---------------------------------------------------------------------------
 describe('reserveRatio', () => {
-  it('applies ratio from config using baseContextTokens, capped at maxContextTokens', async () => {
-    const agents = await callAndCapture({
-      agents: [makeAgent({ baseContextTokens: 200_000, maxContextTokens: 200_000 })],
-      summarizationConfig: { reserveRatio: 0.03, provider: 'anthropic', model: 'claude' },
-    });
-    // Math.round(200000 * 0.97) = 194000, min(200000, 194000) = 194000
-    expect(agents[0].maxContextTokens).toBe(194_000);
-  });
+  it.each([
+    { reserveRatio: undefined, maxContextTokens: 260000, expectedBudget: 247000 },
+    { reserveRatio: 0.03, maxContextTokens: 260000, expectedBudget: 252200 },
+    { reserveRatio: 0.1, maxContextTokens: 260000, expectedBudget: 234000 },
+    { reserveRatio: 0, maxContextTokens: 260000, expectedBudget: 260000 },
+    { reserveRatio: 1, maxContextTokens: 260000, expectedBudget: 260000 },
+    { reserveRatio: 0.03, maxContextTokens: 50000, expectedBudget: 48500 },
+  ])(
+    'lets the SDK apply reserveRatio=$reserveRatio once to $maxContextTokens tokens',
+    async ({ reserveRatio, maxContextTokens, expectedBudget }) => {
+      const agents = await callAndCapture({
+        agents: [makeAgent({ maxContextTokens })],
+        summarizationConfig: { reserveRatio, provider: 'anthropic', model: 'claude' },
+      });
 
-  it('never exceeds user-configured maxContextTokens even when ratio computes higher', async () => {
-    const agents = await callAndCapture({
-      agents: [makeAgent({ baseContextTokens: 200_000, maxContextTokens: 50_000 })],
-      summarizationConfig: { reserveRatio: 0.03, provider: 'anthropic', model: 'claude' },
-    });
-    // Math.round(200000 * 0.97) = 194000, but min(50000, 194000) = 50000
-    expect(agents[0].maxContextTokens).toBe(50_000);
-  });
+      expect(agents[0].maxContextTokens).toBe(maxContextTokens);
+      const graph = createCapturedGraph();
+      const context = graph.agentContexts.get('agent_1');
+      expect(context?.projectContextUsage([])?.contextBudget).toBe(expectedBudget);
+    },
+  );
 
-  it('falls back to maxContextTokens when ratio is not set', async () => {
+  it('reserves headroom when summarization is disabled', async () => {
     const agents = await callAndCapture({
-      agents: [makeAgent({ maxContextTokens: 100_000, baseContextTokens: 200_000 })],
-      summarizationConfig: { provider: 'anthropic', model: 'claude' },
+      agents: [makeAgent({ maxContextTokens: 260000 })],
+      summarizationConfig: { enabled: false, reserveRatio: 0.03 },
     });
-    expect(agents[0].maxContextTokens).toBe(100_000);
-  });
 
-  it('falls back to maxContextTokens when ratio is 0', async () => {
-    const agents = await callAndCapture({
-      agents: [makeAgent({ maxContextTokens: 100_000, baseContextTokens: 200_000 })],
-      summarizationConfig: { reserveRatio: 0, provider: 'anthropic', model: 'claude' },
-    });
-    expect(agents[0].maxContextTokens).toBe(100_000);
-  });
-
-  it('falls back to maxContextTokens when ratio is 1', async () => {
-    const agents = await callAndCapture({
-      agents: [makeAgent({ maxContextTokens: 100_000, baseContextTokens: 200_000 })],
-      summarizationConfig: { reserveRatio: 1, provider: 'anthropic', model: 'claude' },
-    });
-    expect(agents[0].maxContextTokens).toBe(100_000);
-  });
-
-  it('falls back to maxContextTokens when baseContextTokens is undefined', async () => {
-    const agents = await callAndCapture({
-      agents: [makeAgent({ maxContextTokens: 100_000 })],
-      summarizationConfig: { reserveRatio: 0.05, provider: 'anthropic', model: 'claude' },
-    });
-    expect(agents[0].maxContextTokens).toBe(100_000);
-  });
-
-  it('clamps to 1024 minimum but still capped at maxContextTokens', async () => {
-    const agents = await callAndCapture({
-      agents: [makeAgent({ baseContextTokens: 500, maxContextTokens: 2000 })],
-      summarizationConfig: { reserveRatio: 0.99, provider: 'anthropic', model: 'claude' },
-    });
-    // Math.round(500 * 0.01) = 5 → clamped to 1024, min(2000, 1024) = 1024
-    expect(agents[0].maxContextTokens).toBe(1024);
+    expect(agents[0].summarizationEnabled).toBe(false);
+    const graph = createCapturedGraph();
+    const context = graph.agentContexts.get('agent_1');
+    expect(context?.projectContextUsage([])?.contextBudget).toBe(252200);
   });
 });
 
@@ -993,11 +982,11 @@ describe('multi-agent + per-agent overrides', () => {
     });
   });
 
-  it('different agents get different effectiveMaxContextTokens', async () => {
+  it('preserves each agent context limit and applies its reserve in the SDK', async () => {
     const agents = await callAndCapture({
       agents: [
-        makeAgent({ id: 'agent_1', baseContextTokens: 200_000, maxContextTokens: 100_000 }),
-        makeAgent({ id: 'agent_2', baseContextTokens: 100_000, maxContextTokens: 50_000 }),
+        makeAgent({ id: 'agent_1', maxContextTokens: 100_000 }),
+        makeAgent({ id: 'agent_2', maxContextTokens: 50_000 }),
       ],
       summarizationConfig: {
         reserveRatio: 0.1,
@@ -1005,10 +994,11 @@ describe('multi-agent + per-agent overrides', () => {
         model: 'claude',
       },
     });
-    // agent_1: Math.round(200000 * 0.9) = 180000, but capped at user's maxContextTokens (100000)
     expect(agents[0].maxContextTokens).toBe(100_000);
-    // agent_2: Math.round(100000 * 0.9) = 90000, but capped at user's maxContextTokens (50000)
     expect(agents[1].maxContextTokens).toBe(50_000);
+    const graph = createCapturedGraph();
+    expect(graph.agentContexts.get('agent_1')?.projectContextUsage([])?.contextBudget).toBe(90000);
+    expect(graph.agentContexts.get('agent_2')?.projectContextUsage([])?.contextBudget).toBe(45000);
   });
 });
 
