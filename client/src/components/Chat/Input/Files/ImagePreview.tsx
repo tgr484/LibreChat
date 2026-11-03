@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button } from '@librechat/client';
 import { Maximize2, X } from 'lucide-react';
+import { Button, Spinner } from '@librechat/client';
 import { FileSources } from 'librechat-data-provider';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import ProgressCircle from './ProgressCircle';
@@ -19,6 +19,7 @@ const ImagePreview = ({
   imageBase64,
   url,
   progress = 1,
+  processing = false,
   className = '',
   source,
   alt = 'Preview image',
@@ -26,6 +27,7 @@ const ImagePreview = ({
   imageBase64?: string;
   url?: string;
   progress?: number;
+  processing?: boolean;
   className?: string;
   source?: FileSources;
   alt?: string;
@@ -137,14 +139,16 @@ const ImagePreview = ({
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
       >
-        {progress < 1 ? (
+        {processing && <Spinner className="absolute inset-0 m-auto size-5 text-text-primary" />}
+        {!processing && progress < 1 && (
           <ProgressCircle
             circumference={circumference}
             offset={offset}
             circleCSSProperties={circleCSSProperties}
             aria-label={`Loading progress: ${Math.round(progress * 100)}%`}
           />
-        ) : (
+        )}
+        {!processing && progress >= 1 && (
           <div
             className={cn(
               'absolute inset-0 flex transform-gpu cursor-pointer items-center justify-center rounded-xl transition-opacity duration-200 ease-in-out',

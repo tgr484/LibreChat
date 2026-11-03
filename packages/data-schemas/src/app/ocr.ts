@@ -7,6 +7,7 @@ export function loadOCRConfig(config?: TCustomConfig['ocr']): TCustomConfig['ocr
   const apiKey = config?.apiKey ?? '';
   const mistralModel = config?.mistralModel ?? '';
   return {
+    progressEnabled: config.progressEnabled ?? false,
     apiKey,
     baseURL,
     mistralModel,

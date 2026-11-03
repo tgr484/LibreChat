@@ -885,7 +885,15 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
         try {
           const ocrStrategy = appConfig?.ocr?.strategy ?? FileSources.document_parser;
           const { handleFileUpload } = getStrategyFunctions(ocrStrategy);
-          return await handleFileUpload({ req, file, loadAuthValues });
+          return await handleFileUpload({
+            req,
+            file,
+            loadAuthValues,
+            signal: sseStream?.signal,
+            onProgress: sseStream
+              ? (ocr) => sseStream.sendProgress({ temp_file_id, tool_resource, ocr })
+              : undefined,
+          });
         } catch (err) {
           const { errorMetadata } = getExtractionLogDetails(err);
           logger.error(

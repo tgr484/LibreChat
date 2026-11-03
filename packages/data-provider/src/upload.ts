@@ -1,5 +1,6 @@
+import type { TFileUpload, TFileUploadProgress } from './types/files';
 import type { EToolResources } from './types/assistants';
-import type { TFileUpload } from './types/files';
+import { fileUploadProgressSchema } from './types/files';
 import request from './request';
 
 const EVENT_STREAM_MEDIA_TYPE = 'text/event-stream';
@@ -106,6 +107,7 @@ const createStreamError = (data: string, formData: FormData) => {
 const readEventStream = async (
   stream: ReadableStream<Uint8Array>,
   formData: FormData,
+  onProgress?: (data: TFileUploadProgress) => void,
 ): Promise<TFileUpload> => {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -149,6 +151,18 @@ const readEventStream = async (
           resetHeartbeatTimer();
           continue;
         }
+        if (event.type === 'progress') {
+          resetHeartbeatTimer();
+          try {
+            const progress = fileUploadProgressSchema.safeParse(JSON.parse(event.data));
+            if (progress.success && progress.data.temp_file_id === getFileId(formData)) {
+              onProgress?.(progress.data);
+            }
+          } catch {
+            // Invalid progress must not interrupt the file upload.
+          }
+          continue;
+        }
         if (event.type === 'error') {
           throw createStreamError(event.data, formData);
         }
@@ -182,6 +196,7 @@ export async function uploadEventStream(
   url: string,
   formData: FormData,
   signal?: AbortSignal | null,
+  onProgress?: (data: TFileUploadProgress) => void,
 ): Promise<TFileUpload> {
   try {
     const response = await request.authenticatedFetch(url, {
@@ -202,7 +217,7 @@ export async function uploadEventStream(
       throw new Error('No upload response body received.');
     }
 
-    return await readEventStream(response.body, formData);
+    return await readEventStream(response.body, formData, onProgress);
   } catch (error) {
     if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
       throw new UploadCanceledError('Upload canceled.');

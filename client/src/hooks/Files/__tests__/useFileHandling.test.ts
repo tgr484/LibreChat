@@ -6,8 +6,11 @@ import {
   EModelEndpoint,
   getEndpointFileConfig,
 } from 'librechat-data-provider';
+import type { UploadMutationOptions } from 'librechat-data-provider';
 
 type MockUploadMutationOptions = {
+  onMutate?: UploadMutationOptions['onMutate'];
+  onProgress?: UploadMutationOptions['onProgress'];
   onSuccess?: (
     data: {
       temp_file_id: string;
@@ -67,6 +70,7 @@ let mockFileConfig: ReturnType<typeof mergeFileConfig> | null = null;
 let mockIsConfigPending = false;
 let mockIsTemporary = false;
 let mockUploadOptions: MockUploadMutationOptions = {};
+let mockUploadSignal: ((body: FormData) => AbortSignal | undefined) | undefined;
 
 jest.mock('~/Providers/ChatContext', () => ({
   useChatContext: jest.fn(() => ({
@@ -104,10 +108,13 @@ jest.mock('@tanstack/react-query', () => ({
 
 jest.mock('~/data-provider', () => ({
   useGetFileConfig: jest.fn(() => ({ data: mockFileConfig })),
-  useUploadFileMutation: jest.fn((opts: MockUploadMutationOptions) => {
-    mockUploadOptions = opts;
-    return { mutate: mockMutate };
-  }),
+  useUploadFileMutation: jest.fn(
+    (opts: MockUploadMutationOptions, signal: typeof mockUploadSignal) => {
+      mockUploadOptions = opts;
+      mockUploadSignal = signal;
+      return { mutate: mockMutate };
+    },
+  ),
 }));
 
 jest.mock('~/hooks/useLocalize', () => {
@@ -197,6 +204,62 @@ describe('useFileHandling', () => {
   });
 
   const loadHook = async () => (await import('../useFileHandling')).default;
+
+  it('cancels only the removed upload from another hook sharing the same composer', async () => {
+    const { useFileHandlingNoChatContext } = await import('../useFileHandling');
+    const { useUploadProgress } = await import('../progress');
+    const fileState = { files: new Map(), setFiles: jest.fn() };
+    const { result: uploads } = renderHook(() =>
+      useFileHandlingNoChatContext(undefined, fileState),
+    );
+    await act(async () => {
+      await uploads.current.handleFiles([
+        new File(['first'], 'first.txt', { type: 'text/plain' }),
+        new File(['second'], 'second.txt', { type: 'text/plain' }),
+      ]);
+    });
+    const first = mockMutate.mock.calls[0][0] as FormData;
+    const second = mockMutate.mock.calls[1][0] as FormData;
+    const fileId = String(first.get('file_id'));
+    const firstSignal = mockUploadSignal?.(first);
+    const secondSignal = mockUploadSignal?.(second);
+    const options = mockUploadOptions;
+    act(() => {
+      void options.onMutate?.(first);
+      options.onProgress?.(
+        {
+          temp_file_id: fileId,
+          ocr: {
+            status: 'recognizing',
+            page_unit: 'pdf_page',
+            page_count: 12,
+            pages_done: 3,
+            figures_total: 0,
+            figures_done: 0,
+            position: null,
+            retry_rounds: 0,
+            retry_at: null,
+          },
+        },
+        first,
+      );
+    });
+    const { result: progress } = renderHook(() => useUploadProgress(fileId));
+    expect(progress.current?.pages_done).toBe(3);
+    expect(firstSignal?.aborted).toBe(false);
+    expect(secondSignal?.aborted).toBe(false);
+
+    const { result: removal } = renderHook(() =>
+      useFileHandlingNoChatContext(undefined, fileState),
+    );
+    act(() => removal.current.abortUpload(fileId));
+    expect(firstSignal?.aborted).toBe(true);
+    expect(secondSignal?.aborted).toBe(false);
+    expect(progress.current).toBeUndefined();
+    act(() => options.onProgress?.({ temp_file_id: fileId, ocr: null }, first));
+    expect(progress.current).toBeUndefined();
+    expect(mockDeleteFileById).toHaveBeenCalledWith(fileId);
+  });
 
   describe('endpointOverride', () => {
     it('clears the loading state when file validation throws', async () => {

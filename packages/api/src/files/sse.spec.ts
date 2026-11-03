@@ -144,6 +144,19 @@ describe('sse', () => {
       stream.close();
     });
 
+    it('emits progress and aborts observers when the response closes', () => {
+      const res = createMockRes();
+      const stream = startUploadSseStream(res);
+      stream.sendProgress({ temp_file_id: 'upload-id', ocr: null });
+      expect(parseEvents(res)).toEqual([
+        { event: 'progress', data: { temp_file_id: 'upload-id', ocr: null } },
+      ]);
+      expect(stream.signal.aborted).toBe(false);
+      res.emit('close');
+      expect(stream.signal.aborted).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
     describe('close', () => {
       it('emits a close event, ends the response, and clears the heartbeat', () => {
         const res = createMockRes();
@@ -188,6 +201,8 @@ describe('sse', () => {
     it('sends the payload over the SSE stream when a stream is active', () => {
       const res = createMockRes();
       const sseStream = {
+        signal: new AbortController().signal,
+        sendProgress: jest.fn(),
         sendData: jest.fn(),
         sendError: jest.fn(),
         close: jest.fn(),
@@ -256,6 +271,8 @@ describe('sse', () => {
     it('sends structured policy errors over an active SSE stream', () => {
       const res = createMockRes();
       const sseStream = {
+        signal: new AbortController().signal,
+        sendProgress: jest.fn(),
         sendData: jest.fn(),
         sendError: jest.fn(),
         close: jest.fn(),

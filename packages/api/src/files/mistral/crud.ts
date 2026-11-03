@@ -8,7 +8,7 @@ import {
   extractEnvVariable,
   extractVariableName,
 } from 'librechat-data-provider';
-import type { TCustomConfig } from 'librechat-data-provider';
+import type { TCustomConfig, TOCRProgress } from 'librechat-data-provider';
 import type { AxiosError, AxiosRequestConfig } from 'axios';
 import type {
   MistralFileUploadResponse,
@@ -27,6 +27,7 @@ import { hasActiveFilePolicy } from '~/protection/files';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { applyAxiosProxyConfig } from '~/utils/proxy';
 import { readFileAsBuffer } from '~/utils/files';
+import { observeOCRProgress } from './progress';
 import { loadServiceKey } from '~/utils/key';
 
 const axios = createAxiosInstance();
@@ -50,6 +51,8 @@ interface GoogleServiceAccount {
 interface OCRContext {
   req: ServerRequest;
   file: Express.Multer.File;
+  onProgress?: (progress: TOCRProgress | null) => void;
+  signal?: AbortSignal;
   loadAuthValues: (params: {
     userId: string;
     authFields: string[];
@@ -447,6 +450,9 @@ export const uploadMistralOCR = async (context: OCRContext): Promise<MistralOCRU
   let mistralFileId: string | undefined;
   let apiKey: string | undefined;
   let baseURL: string | undefined;
+  const progressController = new AbortController();
+  const stopProgress = () => progressController.abort();
+  let progressTask: Promise<void> | undefined;
   const contentProtected = hasActiveFilePolicy(context.req.config?.filters);
 
   const allowedAddresses = context.req.config?.ocr?.allowedAddresses;
@@ -466,6 +472,21 @@ export const uploadMistralOCR = async (context: OCRContext): Promise<MistralOCRU
     });
 
     mistralFileId = mistralFile.id;
+
+    if (context.req.config?.ocr?.progressEnabled && context.onProgress) {
+      context.signal?.addEventListener('abort', stopProgress, { once: true });
+      if (context.signal?.aborted) {
+        stopProgress();
+      }
+      progressTask = observeOCRProgress({
+        apiKey,
+        baseURL,
+        fileId: mistralFileId,
+        allowedAddresses,
+        signal: progressController.signal,
+        onProgress: context.onProgress,
+      });
+    }
 
     const signedUrlResponse = await getSignedUrl({
       apiKey,
@@ -493,16 +514,6 @@ export const uploadMistralOCR = async (context: OCRContext): Promise<MistralOCRU
     }
     const { text, images } = processOCRResult(ocrResult);
 
-    if (mistralFileId && apiKey && baseURL) {
-      await deleteMistralFile({
-        fileId: mistralFileId,
-        apiKey,
-        baseURL,
-        allowedAddresses,
-        contentProtected,
-      });
-    }
-
     return {
       filename: context.file.originalname,
       bytes: text.length * 4,
@@ -511,6 +522,12 @@ export const uploadMistralOCR = async (context: OCRContext): Promise<MistralOCRU
       images,
     };
   } catch (error) {
+    context.onProgress?.(null);
+    throw createOCRError(error, 'Error uploading document to Mistral OCR API:', contentProtected);
+  } finally {
+    stopProgress();
+    context.signal?.removeEventListener('abort', stopProgress);
+    await progressTask;
     if (mistralFileId && apiKey && baseURL) {
       await deleteMistralFile({
         fileId: mistralFileId,
@@ -520,7 +537,6 @@ export const uploadMistralOCR = async (context: OCRContext): Promise<MistralOCRU
         contentProtected,
       });
     }
-    throw createOCRError(error, 'Error uploading document to Mistral OCR API:', contentProtected);
   }
 };
 

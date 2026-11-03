@@ -388,6 +388,8 @@ registration:
 # ocr:
 #   baseURL: '${OCR_BASEURL}'
 #   apiKey: '${OCR_API_KEY}'
+#   # Enable for ocr-shim's /files/{id}/events endpoint; also set FILE_UPLOAD_SSE_ENABLED=true.
+#   progressEnabled: false
 #   allowedAddresses:
 #     - 'localhost:8080'
 #     - '127.0.0.1:8080'

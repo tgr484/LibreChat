@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { CodeEnvRef, CodeEnvRefMap } from '../codeEnvRef';
 import { EToolResources } from './assistants';
 
@@ -182,6 +183,28 @@ export type TFileUpload = TFile & {
   temp_file_id: string;
 };
 
+export const ocrProgressSchema = z.object({
+  status: z.enum(['queued', 'parsing', 'recognizing', 'assembling', 'done', 'failed']),
+  page_unit: z.string().max(64).nullable().optional().default(null),
+  page_count: z.number().int().nonnegative().default(0),
+  pages_done: z.number().int().nonnegative().default(0),
+  figures_total: z.number().int().nonnegative().default(0),
+  figures_done: z.number().int().nonnegative().default(0),
+  position: z.number().int().nonnegative().nullable().optional().default(null),
+  retry_rounds: z.number().int().nonnegative().default(0),
+  retry_at: z.string().max(64).nullable().optional().default(null),
+});
+
+export type TOCRProgress = z.infer<typeof ocrProgressSchema>;
+
+export const fileUploadProgressSchema = z.object({
+  temp_file_id: z.string(),
+  tool_resource: z.nativeEnum(EToolResources).optional(),
+  ocr: ocrProgressSchema.nullable(),
+});
+
+export type TFileUploadProgress = z.infer<typeof fileUploadProgressSchema>;
+
 /**
  * Shape returned by `GET /api/files/:file_id/preview`. The deferred-
  * preview code-execution flow polls this until status is terminal:
@@ -222,6 +245,7 @@ export type SpeechToTextResponse = {
 export type VoiceResponse = string[];
 
 export type UploadMutationOptions = {
+  onProgress?: (data: TFileUploadProgress, variables: FormData) => void;
   onSuccess?: (data: TFileUpload, variables: FormData, context?: unknown) => void;
   onMutate?: (variables: FormData) => void | Promise<unknown>;
   onError?: (error: unknown, variables: FormData, context?: unknown) => void;

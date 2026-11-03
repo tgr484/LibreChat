@@ -13,6 +13,12 @@ const getAffordance = (container: HTMLElement) =>
 describe('ImagePreview expand affordance', () => {
   const trigger = () => screen.getByRole('button', { name: 'View Preview image in full size' });
 
+  test('uses an indeterminate spinner instead of a percentage during OCR', () => {
+    const { container } = render(<ImagePreview url="/scan.png" progress={0.6} processing />);
+    expect(container.querySelector('.spinner')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Loading progress:/)).not.toBeInTheDocument();
+  });
+
   test('is hidden at rest', () => {
     const { container } = render(<ImagePreview url="/img.png" />);
 
